@@ -1,0 +1,13 @@
+__pycache__/
+
+# Go
+*.test
+*.out
+go.work
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
