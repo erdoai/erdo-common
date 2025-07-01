@@ -19,6 +19,7 @@ var BasicTemplateFunctions = []string{
 	"truncateString",
 	"regexReplace",
 	"noop",
+	"list",
 }
 
 // DataTemplateFunctions are functions that require .Data and .MissingKeys parameters
@@ -43,6 +44,7 @@ var DataTemplateFunctions = []string{
 	"incrementCounter",
 	"incrementCounterBy",
 	"coalesce",
+	"filter",
 }
 
 // AllTemplateFunctions combines basic and data template functions

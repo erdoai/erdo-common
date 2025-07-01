@@ -1,6 +1,7 @@
 package erdotypes
 
 import (
+	"database/sql/driver"
 	"encoding/json"
 	"time"
 
@@ -26,27 +27,27 @@ type Bot struct {
 
 // Step represents a bot step for export/import across CLI and backend
 type Step struct {
-	ID                          string          `json:"id"`
-	BotID                       string          `json:"bot_id"`
-	ActionType                  string          `json:"action_type"`
-	Parameters                  json.RawMessage `json:"parameters"`
-	DependsOn                   *[]string       `json:"depends_on,omitempty"` // Able to be nil (so dependencies can be automatically resolved by the API), or empty (so that the deps are explicitly empty)
-	Key                         *string         `json:"key,omitempty"`
-	StepOrder                   int32           `json:"step_order"`
-	OutputContentType           string          `json:"output_content_type"`
-	UserOutputVisibility        string          `json:"user_output_visibility"`
-	BotOutputVisibility         string          `json:"bot_output_visibility"`
-	ExecutionMode               json.RawMessage `json:"execution_mode"`
-	OutputBehaviour             json.RawMessage `json:"output_behaviour"`
-	OutputChannels              json.RawMessage `json:"output_channels"`
-	RunningMessage              *string         `json:"running_message,omitempty"`
-	FinishedMessage             *string         `json:"finished_message,omitempty"`
-	HistoryContentType          *string         `json:"history_content_type,omitempty"`
-	UiContentType               *string         `json:"ui_content_type,omitempty"`
-	ParameterHydrationBehaviour json.RawMessage `json:"parameter_hydration_behaviour"`
-	ResultHandlerID             *string         `json:"result_handler_id,omitempty"`
-	CreatedAt                   time.Time       `json:"created_at"`
-	UpdatedAt                   time.Time       `json:"updated_at"`
+	ID                          string                      `json:"id"`
+	BotID                       string                      `json:"bot_id"`
+	ActionType                  string                      `json:"action_type"`
+	Parameters                  map[string]any              `json:"parameters"`
+	DependsOn                   *[]string                   `json:"depends_on,omitempty"` // Able to be nil (so dependencies can be automatically resolved by the API), or empty (so that the deps are explicitly empty)
+	Key                         *string                     `json:"key,omitempty"`
+	StepOrder                   int32                       `json:"step_order"`
+	OutputContentType           string                      `json:"output_content_type"`
+	UserOutputVisibility        string                      `json:"user_output_visibility"`
+	BotOutputVisibility         string                      `json:"bot_output_visibility"`
+	ExecutionMode               ExecutionMode               `json:"execution_mode"`
+	OutputBehaviour             OutputBehavior              `json:"output_behaviour"`
+	OutputChannels              []string                    `json:"output_channels"` // Array of channel names
+	RunningMessage              *string                     `json:"running_message,omitempty"`
+	FinishedMessage             *string                     `json:"finished_message,omitempty"`
+	HistoryContentType          *string                     `json:"history_content_type,omitempty"`
+	UiContentType               *string                     `json:"ui_content_type,omitempty"`
+	ParameterHydrationBehaviour ParameterHydrationBehaviour `json:"parameter_hydration_behaviour"`
+	ResultHandlerID             *string                     `json:"result_handler_id,omitempty"`
+	CreatedAt                   time.Time                   `json:"created_at"`
+	UpdatedAt                   time.Time                   `json:"updated_at"`
 }
 
 // Parameter Types
@@ -71,6 +72,36 @@ const (
 	ParameterHydrationBehaviourRaw     ParameterHydrationBehaviour = "raw"
 	ParameterHydrationBehaviourNone    ParameterHydrationBehaviour = "none"
 )
+
+// Scan implements sql.Scanner interface for ParameterHydrationBehaviour
+func (phb *ParameterHydrationBehaviour) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return nil
+	}
+
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+
+	*phb = ParameterHydrationBehaviour(str)
+	return nil
+}
+
+// Value implements driver.Valuer interface for ParameterHydrationBehaviour
+func (phb ParameterHydrationBehaviour) Value() (driver.Value, error) {
+	return json.Marshal(string(phb))
+}
 
 // OutputVisibility represents visibility levels for any type of output
 type OutputVisibility string
@@ -152,7 +183,7 @@ type ParameterValueSource struct {
 	ID                    uuid.UUID                `json:"id"`
 	ParameterDefinitionID uuid.UUID                `json:"parameter_definition_id"`
 	Type                  ParameterValueSourceType `json:"type"`
-	Parameters            json.RawMessage          `json:"parameters"`
+	Parameters            map[string]any           `json:"parameters"`
 	CreatedAt             time.Time                `json:"created_at"`
 	UpdatedAt             time.Time                `json:"updated_at"`
 	// Extended fields for agent discovery
@@ -161,24 +192,24 @@ type ParameterValueSource struct {
 
 // ParameterValueSourceHandler represents a handler for parameter value source events
 type ParameterValueSourceHandler struct {
-	ID                     uuid.UUID       `json:"id"`
-	ParameterValueSourceID uuid.UUID       `json:"parameter_value_source_id"`
-	ActionType             string          `json:"action_type"`
-	Parameters             json.RawMessage `json:"parameters"`
-	ExecutionMode          string          `json:"execution_mode"`
-	CreatedAt              time.Time       `json:"created_at"`
-	UpdatedAt              time.Time       `json:"updated_at"`
+	ID                     uuid.UUID      `json:"id"`
+	ParameterValueSourceID uuid.UUID      `json:"parameter_value_source_id"`
+	ActionType             string         `json:"action_type"`
+	Parameters             map[string]any `json:"parameters"`
+	ExecutionMode          string         `json:"execution_mode"`
+	CreatedAt              time.Time      `json:"created_at"`
+	UpdatedAt              time.Time      `json:"updated_at"`
 }
 
 // ParameterInterpreter represents a parameter interpreter
 type ParameterInterpreter struct {
-	ID                    uuid.UUID       `json:"id"`
-	ParameterDefinitionID uuid.UUID       `json:"parameter_definition_id"`
-	ActionType            string          `json:"action_type"`
-	Parameters            json.RawMessage `json:"parameters"`
-	InterpreterOrder      int32           `json:"interpreter_order"`
-	CreatedAt             time.Time       `json:"created_at"`
-	UpdatedAt             time.Time       `json:"updated_at"`
+	ID                    uuid.UUID      `json:"id"`
+	ParameterDefinitionID uuid.UUID      `json:"parameter_definition_id"`
+	ActionType            string         `json:"action_type"`
+	Parameters            map[string]any `json:"parameters"`
+	InterpreterOrder      int32          `json:"interpreter_order"`
+	CreatedAt             time.Time      `json:"created_at"`
+	UpdatedAt             time.Time      `json:"updated_at"`
 }
 
 // Agent Discovery Types (for CLI introspection)
@@ -193,22 +224,85 @@ type AgentDiscovery struct {
 	SourceCode           string                `json:"source_code"`
 }
 
+// ExecutionMode represents execution mode configuration
 type ExecutionMode struct {
 	Mode        string               `json:"mode"`
-	Data        json.RawMessage      `json:"data"`
+	Data        any                  `json:"data"`
 	IfCondition *ConditionDefinition `json:"if_condition"`
 }
 
-type OutputBehavior json.RawMessage
+// Scan implements sql.Scanner interface for ExecutionMode
+func (em *ExecutionMode) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return nil
+	}
+
+	return json.Unmarshal(data, em)
+}
+
+// Value implements driver.Valuer interface for ExecutionMode
+func (em ExecutionMode) Value() (driver.Value, error) {
+	return json.Marshal(em)
+}
+
+// OutputBehaviorType represents how output values should be handled
+type OutputBehaviorType string
+
+const (
+	// OutputBehaviorTypeStepOnly indicates output is only written to the 'step.x' key
+	OutputBehaviorTypeStepOnly OutputBehaviorType = "step_only"
+	// OutputBehaviorTypeMerge indicates output is merged with the root state
+	OutputBehaviorTypeMerge OutputBehaviorType = "merge"
+	// OutputBehaviorTypeOverwrite indicates output overwrites the root state
+	OutputBehaviorTypeOverwrite OutputBehaviorType = "overwrite"
+)
+
+// OutputBehavior represents how each output field should be handled
+// Maps field names to their behavior types
+type OutputBehavior map[string]OutputBehaviorType
+
+// Scan implements sql.Scanner interface for OutputBehavior
+func (ob *OutputBehavior) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return nil
+	}
+
+	return json.Unmarshal(data, ob)
+}
+
+// Value implements driver.Valuer interface for OutputBehavior
+func (ob OutputBehavior) Value() (driver.Value, error) {
+	return json.Marshal(ob)
+}
 
 // API Request Types
 // ================
 
 // UpsertBotRequest represents a request to create or update a bot
 type UpsertBotRequest struct {
-	Bot    Bot                `json:"bot"`
-	Steps  []StepWithHandlers `json:"steps"`
-	Source string             `json:"source"`
+	Bot    Bot                   `json:"bot"`
+	Steps  []APIStepWithHandlers `json:"steps"`
+	Source string                `json:"source"`
 }
 
 // Response Types
@@ -220,7 +314,7 @@ type BotsResponse struct {
 }
 
 type StepsResponse struct {
-	Steps []Step `json:"steps"`
+	Steps []APIStep `json:"steps"`
 }
 
 // Service and Integration Types (for CLI and backend)
@@ -316,9 +410,33 @@ type ExportActionsResponse struct {
 
 // ConditionDefinition represents a conditional expression
 type ConditionDefinition struct {
-	Type       string          `json:"type"`
-	Conditions json.RawMessage `json:"conditions,omitempty"`
-	Leaf       json.RawMessage `json:"leaf,omitempty"`
+	Type       string                `json:"type"`
+	Conditions []ConditionDefinition `json:"conditions,omitempty"`
+	Leaf       map[string]any        `json:"leaf,omitempty"`
+}
+
+// Scan implements sql.Scanner interface for ConditionDefinition
+func (cd *ConditionDefinition) Scan(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+
+	var data []byte
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return nil
+	}
+
+	return json.Unmarshal(data, cd)
+}
+
+// Value implements driver.Valuer interface for ConditionDefinition
+func (cd ConditionDefinition) Value() (driver.Value, error) {
+	return json.Marshal(cd)
 }
 
 type StepWithHandlers struct {
@@ -326,14 +444,15 @@ type StepWithHandlers struct {
 	ResultHandlers []ResultHandler `json:"result_handlers"`
 }
 
+// ResultHandler represents a result handler configuration
 type ResultHandler struct {
-	Type               string             `json:"type"`
-	IfConditions       json.RawMessage    `json:"if_conditions"`
-	ResultHandlerOrder int32              `json:"result_handler_order"`
-	OutputContentType  string             `json:"output_content_type"`
-	HistoryContentType *string            `json:"history_content_type,omitempty"`
-	UiContentType      *string            `json:"ui_content_type,omitempty"`
-	Steps              []StepWithHandlers `json:"steps"`
+	Type               string              `json:"type"`
+	IfConditions       ConditionDefinition `json:"if_conditions"`
+	ResultHandlerOrder int32               `json:"result_handler_order"`
+	OutputContentType  string              `json:"output_content_type"`
+	HistoryContentType *string             `json:"history_content_type,omitempty"`
+	UiContentType      *string             `json:"ui_content_type,omitempty"`
+	Steps              []StepWithHandlers  `json:"steps"`
 }
 
 // Tool Definition Types for LLM Function Calling
@@ -368,15 +487,15 @@ type JSONSchema struct {
 
 // Tool represents a tool definition for LLM function calling
 type Tool struct {
-	Name                string          `json:"name"`
-	Description         string          `json:"description"`
-	InputSchema         JSONSchema      `json:"input_schema"`
-	ActionType          string          `json:"action_type"`
-	Parameters          json.RawMessage `json:"parameters"`
-	BotOutputVisibility string          `json:"bot_output_visibility,omitempty"`
-	HistoryContentType  string          `json:"history_content_type,omitempty"`
-	UiContentType       string          `json:"ui_content_type,omitempty"`
-	AsRoot              bool            `json:"as_root,omitempty"`
+	Name                string         `json:"name"`
+	Description         string         `json:"description"`
+	InputSchema         JSONSchema     `json:"input_schema"`
+	ActionType          string         `json:"action_type"`
+	Parameters          map[string]any `json:"parameters"`
+	BotOutputVisibility string         `json:"bot_output_visibility,omitempty"`
+	HistoryContentType  string         `json:"history_content_type,omitempty"`
+	UiContentType       string         `json:"ui_content_type,omitempty"`
+	AsRoot              bool           `json:"as_root,omitempty"`
 }
 
 // Result Types (for actions and step execution)
@@ -483,4 +602,109 @@ type Result struct {
 	Output     *Dict   `json:"output"`
 	Message    *string `json:"message"`
 	Error      *Error  `json:"error"`
+}
+
+// API Types (Encore-compatible versions without interface{})
+// ==========================================================
+
+// APIStep is an Encore-API-compatible version of Step
+type APIStep struct {
+	ID                          string                      `json:"id"`
+	BotID                       string                      `json:"bot_id"`
+	ActionType                  string                      `json:"action_type"`
+	Parameters                  json.RawMessage             `json:"parameters"`
+	DependsOn                   *[]string                   `json:"depends_on,omitempty"`
+	Key                         *string                     `json:"key,omitempty"`
+	StepOrder                   int32                       `json:"step_order"`
+	OutputContentType           string                      `json:"output_content_type"`
+	UserOutputVisibility        string                      `json:"user_output_visibility"`
+	BotOutputVisibility         string                      `json:"bot_output_visibility"`
+	ExecutionMode               APIExecutionMode            `json:"execution_mode"`
+	OutputBehaviour             OutputBehavior              `json:"output_behaviour"`
+	OutputChannels              []string                    `json:"output_channels"`
+	RunningMessage              *string                     `json:"running_message,omitempty"`
+	FinishedMessage             *string                     `json:"finished_message,omitempty"`
+	HistoryContentType          *string                     `json:"history_content_type,omitempty"`
+	UiContentType               *string                     `json:"ui_content_type,omitempty"`
+	ParameterHydrationBehaviour ParameterHydrationBehaviour `json:"parameter_hydration_behaviour"`
+	ResultHandlerID             *string                     `json:"result_handler_id,omitempty"`
+	CreatedAt                   time.Time                   `json:"created_at"`
+	UpdatedAt                   time.Time                   `json:"updated_at"`
+}
+
+// APIParameterValueSource is an Encore-API-compatible version of ParameterValueSource
+type APIParameterValueSource struct {
+	ID                    uuid.UUID                        `json:"id"`
+	ParameterDefinitionID uuid.UUID                        `json:"parameter_definition_id"`
+	Type                  ParameterValueSourceType         `json:"type"`
+	Parameters            json.RawMessage                  `json:"parameters"` // JSON string instead of interface{}
+	CreatedAt             time.Time                        `json:"created_at"`
+	UpdatedAt             time.Time                        `json:"updated_at"`
+	OnPopulate            []APIParameterValueSourceHandler `json:"on_populate,omitempty"`
+}
+
+// APIParameterValueSourceHandler is an Encore-API-compatible version of ParameterValueSourceHandler
+type APIParameterValueSourceHandler struct {
+	ID                     uuid.UUID        `json:"id"`
+	ParameterValueSourceID uuid.UUID        `json:"parameter_value_source_id"`
+	ActionType             string           `json:"action_type"`
+	Parameters             json.RawMessage  `json:"parameters"`
+	ExecutionMode          APIExecutionMode `json:"execution_mode"`
+	CreatedAt              time.Time        `json:"created_at"`
+	UpdatedAt              time.Time        `json:"updated_at"`
+}
+
+// APIParameterInterpreter is an Encore-API-compatible version of ParameterInterpreter
+type APIParameterInterpreter struct {
+	ID                    uuid.UUID       `json:"id"`
+	ParameterDefinitionID uuid.UUID       `json:"parameter_definition_id"`
+	ActionType            string          `json:"action_type"`
+	Parameters            json.RawMessage `json:"parameters"`
+	InterpreterOrder      int32           `json:"interpreter_order"`
+	CreatedAt             time.Time       `json:"created_at"`
+	UpdatedAt             time.Time       `json:"updated_at"`
+}
+
+// APIExecutionMode is an Encore-API-compatible version of ExecutionMode
+type APIExecutionMode struct {
+	Mode        string                  `json:"mode"`
+	Data        json.RawMessage         `json:"data"`
+	IfCondition *APIConditionDefinition `json:"if_condition,omitempty"`
+}
+
+// APIConditionDefinition is an Encore-API-compatible version of ConditionDefinition
+type APIConditionDefinition struct {
+	Type       string                   `json:"type"`
+	Conditions []APIConditionDefinition `json:"conditions,omitempty"`
+	Leaf       json.RawMessage          `json:"leaf,omitempty"`
+}
+
+// APITool is an Encore-API-compatible version of Tool
+type APITool struct {
+	Name                string          `json:"name"`
+	Description         string          `json:"description"`
+	InputSchema         json.RawMessage `json:"input_schema"`
+	ActionType          string          `json:"action_type"`
+	Parameters          json.RawMessage `json:"parameters"`
+	BotOutputVisibility string          `json:"bot_output_visibility,omitempty"`
+	HistoryContentType  string          `json:"history_content_type,omitempty"`
+	UiContentType       string          `json:"ui_content_type,omitempty"`
+	AsRoot              bool            `json:"as_root,omitempty"`
+}
+
+// APIResultHandler is an Encore-API-compatible version of ResultHandler
+type APIResultHandler struct {
+	Type               string                 `json:"type"`
+	IfConditions       APIConditionDefinition `json:"if_conditions"`
+	ResultHandlerOrder int32                  `json:"result_handler_order"`
+	OutputContentType  string                 `json:"output_content_type"`
+	HistoryContentType *string                `json:"history_content_type,omitempty"`
+	UiContentType      *string                `json:"ui_content_type,omitempty"`
+	Steps              []APIStepWithHandlers  `json:"steps"`
+}
+
+// APIStepWithHandlers is an Encore-API-compatible version of StepWithHandlers
+type APIStepWithHandlers struct {
+	Step           APIStep            `json:"step"`
+	ResultHandlers []APIResultHandler `json:"result_handlers"`
 }
