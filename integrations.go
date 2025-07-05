@@ -170,6 +170,7 @@ type IntegrationDefinition struct {
 	ProviderName            *string           `json:"provider_name,omitempty"`
 	DocumentationUrl        *string           `json:"documentation_url,omitempty"`
 	OpenapiDocumentationUrl *string           `json:"openapi_documentation_url,omitempty"`
+	LlmsTxtUrl              *string           `json:"llms_txt_url,omitempty"`
 	HealthcheckUrl          *string           `json:"healthcheck_url,omitempty"`
 
 	// OAuth-specific fields
