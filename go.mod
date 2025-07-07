@@ -1,4 +1,4 @@
-module github.com/erdoai/erdo-types
+module github.com/erdoai/erdo-common
 
 go 1.23
 
