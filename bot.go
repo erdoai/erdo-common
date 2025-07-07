@@ -219,7 +219,7 @@ type ParameterInterpreter struct {
 type AgentDiscovery struct {
 	Bot                  Bot                   `json:"bot"`
 	ParameterDefinitions []ParameterDefinition `json:"parameter_definitions"`
-	Steps                []Step                `json:"steps"`
+	Steps                []StepWithHandlers    `json:"steps"`
 	FilePath             string                `json:"file_path"`
 	SourceCode           string                `json:"source_code"`
 }
