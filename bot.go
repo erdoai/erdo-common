@@ -3,6 +3,7 @@ package erdotypes
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -300,10 +301,12 @@ func (ob OutputBehavior) Value() (driver.Value, error) {
 
 // UpsertBotRequest represents a request to create or update a bot
 type UpsertBotRequest struct {
-	Bot    Bot                   `json:"bot"`
-	Steps  []APIStepWithHandlers `json:"steps"`
-	Source string                `json:"source"`
+	Bot                  Bot                      `json:"bot"`
+	Steps                []APIStepWithHandlers    `json:"steps"`
+	Source               string                   `json:"source"`
+	ParameterDefinitions []APIParameterDefinition `json:"parameter_definitions,omitempty"`
 }
+
 
 // Response Types
 // ==============
@@ -329,9 +332,29 @@ type ServiceDefinition struct {
 
 // ActionDefinition represents an action within a service
 type ActionDefinition struct {
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Parameters  []ParameterDefinition `json:"parameters"`
+	Name         string                `json:"name"`
+	Description  string                `json:"description"`
+	Parameters   []ParameterDefinition `json:"parameters"`
+	ResultSchema *ResultSchema         `json:"result_schema,omitempty"`
+}
+
+// ResultSchema defines the expected output structure of an action
+type ResultSchema struct {
+	Description    string                    `json:"description,omitempty"`
+	RequiredFields []string                  `json:"required_fields,omitempty"`
+	OptionalFields []string                  `json:"optional_fields,omitempty"`
+	Properties     map[string]PropertySchema `json:"properties"`
+	Examples       []map[string]interface{}  `json:"examples,omitempty"`
+}
+
+// PropertySchema defines a single property in the result schema
+type PropertySchema struct {
+	Type        JSONSchemaType            `json:"type"`
+	Description string                    `json:"description,omitempty"`
+	Items       *PropertySchema           `json:"items,omitempty"`      // For array types
+	Properties  map[string]PropertySchema `json:"properties,omitempty"` // For object types
+	Example     interface{}               `json:"example,omitempty"`
+	Enum        []string                  `json:"enum,omitempty"` // For enum types
 }
 
 // IntegrationSchema represents an integration configuration
@@ -701,6 +724,19 @@ type APIResultHandler struct {
 	HistoryContentType *string                `json:"history_content_type,omitempty"`
 	UiContentType      *string                `json:"ui_content_type,omitempty"`
 	Steps              []APIStepWithHandlers  `json:"steps"`
+}
+
+// APIParameterDefinition is an Encore-API-compatible version of ParameterDefinition
+type APIParameterDefinition struct {
+	ID          uuid.UUID `json:"id"`
+	BotID       uuid.UUID `json:"bot_id"`
+	Name        string    `json:"name"`
+	Key         string    `json:"key"`
+	Description *string   `json:"description"`
+	Type        string    `json:"type"`
+	IsRequired  bool      `json:"is_required"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // APIStepWithHandlers is an Encore-API-compatible version of StepWithHandlers
