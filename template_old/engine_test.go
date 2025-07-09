@@ -11,7 +11,7 @@ func TestHydrateString(t *testing.T) {
 	tests := []struct {
 		name           string
 		template       string
-		stateParams    Dict
+		stateParams    map[string]any
 		expected       string
 		expectedError  bool
 		expectedErrMsg string
@@ -19,7 +19,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Simple variable substitution",
 			template: "Hello, {{name}}!",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"name": "World",
 			},
 			expected: "Hello, World!",
@@ -27,7 +27,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Conditional rendering",
 			template: "{{if .Data.test}}present{{end}}",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"test": true,
 			},
 			expected: "present",
@@ -35,7 +35,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Conditional rendering - with additional text",
 			template: "{{if (truthy \"test\" .Data)}}present{{end}} other",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"test": true,
 			},
 			expected: "present other",
@@ -43,7 +43,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Conditional rendering - false condition",
 			template: "{{if (truthy \"test\" .Data)}}present{{end}}",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"test": false,
 			},
 			expected: "",
@@ -51,7 +51,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Function call",
 			template: "{{toString (get \"count\" .Data .MissingKeys)}}",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"count": 42,
 			},
 			expected: "42",
@@ -59,7 +59,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Missing variable",
 			template: "Hello, {{missing}}!",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"name": "World",
 			},
 			expectedError:  true,
@@ -68,7 +68,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Optional variable present",
 			template: "Hello, {{name?}}!",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"name": "World",
 			},
 			expected: "Hello, World!",
@@ -76,7 +76,7 @@ func TestHydrateString(t *testing.T) {
 		{
 			name:     "Optional variable missing",
 			template: "Hello, {{missing?}}!",
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"name": "World",
 			},
 			expected: "Hello, !",
@@ -103,36 +103,36 @@ func TestHydrateString(t *testing.T) {
 func TestHydrateDict(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       Dict
-		stateParams Dict
-		expected    Dict
+		input       map[string]any
+		stateParams map[string]any
+		expected    map[string]any
 	}{
 		{
 			name: "Simple value substitution",
-			input: Dict{
+			input: map[string]any{
 				"greeting": "Hello, {{name}}!",
 				"static":   "unchanged",
 			},
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"name": "World",
 			},
-			expected: Dict{
+			expected: map[string]any{
 				"greeting": "Hello, World!",
 				"static":   "unchanged",
 			},
 		},
 		{
 			name: "Nested dict",
-			input: Dict{
-				"outer": Dict{
+			input: map[string]any{
+				"outer": map[string]any{
 					"inner": "Value: {{value}}",
 				},
 			},
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"value": "test",
 			},
-			expected: Dict{
-				"outer": Dict{
+			expected: map[string]any{
+				"outer": map[string]any{
 					"inner": "Value: test",
 				},
 			},
@@ -152,7 +152,7 @@ func TestHydrateSlice(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       []any
-		stateParams Dict
+		stateParams map[string]any
 		expected    []any
 	}{
 		{
@@ -162,7 +162,7 @@ func TestHydrateSlice(t *testing.T) {
 				"Count: {{count}}",
 				"static",
 			},
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"name":  "World",
 				"count": 42,
 			},
@@ -178,16 +178,16 @@ func TestHydrateSlice(t *testing.T) {
 				"Template: {{value}}",
 				42,
 				true,
-				Dict{"nested": "{{value}}"},
+				map[string]any{"nested": "{{value}}"},
 			},
-			stateParams: Dict{
+			stateParams: map[string]any{
 				"value": "test",
 			},
 			expected: []any{
 				"Template: test",
 				42,
 				true,
-				Dict{"nested": "test"},
+				map[string]any{"nested": "test"},
 			},
 		},
 	}
@@ -260,33 +260,33 @@ func TestParseTemplateKey(t *testing.T) {
 func TestMergeSources(t *testing.T) {
 	tests := []struct {
 		name     string
-		sources  []Dict
-		expected Dict
+		sources  []map[string]any
+		expected map[string]any
 	}{
 		{
 			name: "Merge two sources",
-			sources: []Dict{
+			sources: []map[string]any{
 				{"a": 1, "b": 2},
 				{"c": 3, "d": 4},
 			},
-			expected: Dict{"a": 1, "b": 2, "c": 3, "d": 4},
+			expected: map[string]any{"a": 1, "b": 2, "c": 3, "d": 4},
 		},
 		{
 			name: "Overlapping keys - later wins",
-			sources: []Dict{
+			sources: []map[string]any{
 				{"a": 1, "b": 2},
 				{"b": 3, "c": 4},
 			},
-			expected: Dict{"a": 1, "b": 3, "c": 4},
+			expected: map[string]any{"a": 1, "b": 3, "c": 4},
 		},
 		{
 			name: "Empty source",
-			sources: []Dict{
+			sources: []map[string]any{
 				{"a": 1},
 				{},
 				{"b": 2},
 			},
-			expected: Dict{"a": 1, "b": 2},
+			expected: map[string]any{"a": 1, "b": 2},
 		},
 	}
 
@@ -300,11 +300,11 @@ func TestMergeSources(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	data := Dict{
+	data := map[string]any{
 		"simple": "value",
-		"nested": Dict{
+		"nested": map[string]any{
 			"inner": "nested_value",
-			"deep": Dict{
+			"deep": map[string]any{
 				"deeper": "deep_value",
 			},
 		},

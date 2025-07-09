@@ -10,6 +10,32 @@ import (
 	"text/template"
 )
 
+// cleanKey processes a key string to determine if it's optional and returns the cleaned key.
+// Returns the key without the optional marker and a boolean indicating if it was optional.
+func cleanKey(key string) (string, bool) {
+	// Check if parameter is optional (has ? suffix)
+	isOptional := strings.HasSuffix(key, "?")
+	cleanKey := strings.TrimSuffix(key, "?")
+
+	// Remove .Data. prefix if present
+	if strings.HasPrefix(cleanKey, ".Data.") {
+		cleanKey = strings.TrimPrefix(cleanKey, ".Data.")
+	}
+	if strings.HasPrefix(cleanKey, "$.Data.") {
+		cleanKey = strings.TrimPrefix(cleanKey, "$.Data.")
+	}
+
+	return cleanKey, isOptional
+}
+
+// handleMissingKey adds a key to the missingKeys slice only if the key is not optional.
+// This is used to track which required keys are missing from the data during hydration.
+func handleMissingKey(key string, isOptional bool, missingKeys *[]string) {
+	if !isOptional && missingKeys != nil {
+		*missingKeys = append(*missingKeys, key)
+	}
+}
+
 // Basic functions that don't require .Data and .MissingKeys
 var basicFuncMap = template.FuncMap{
 	"truthy":           truthy,
@@ -32,9 +58,9 @@ var basicFuncMap = template.FuncMap{
 // Functions that require .Data and .MissingKeys parameters
 var dataFuncMap = template.FuncMap{
 	"get":                          get,
-	"getOptional":                  getOptional,
 	"concat":                       concat,
 	"getOrOriginal":                getOrOriginal,
+	"sliceEnd":                     sliceEnd,
 	"slice":                        slice,
 	"extractSlice":                 extractSlice,
 	"dedupeBy":                     dedupeBy,
@@ -56,7 +82,7 @@ var dataFuncMap = template.FuncMap{
 
 // Basic template functions (no data dependency)
 
-func truthy(key string, data Dict) bool {
+func truthy(key string, data map[string]any) bool {
 	value, exists := data[key]
 	if !exists {
 		return false
@@ -93,102 +119,53 @@ func toJSON(v any) string {
 	return jsonStr
 }
 
-func _len(v any) int {
-	if v == nil {
+func _len(a any) int {
+	if a == nil {
 		return 0
 	}
-	
-	val := reflect.ValueOf(v)
-	switch val.Kind() {
-	case reflect.Slice, reflect.Array, reflect.Map, reflect.String:
-		return val.Len()
-	default:
-		return 0
+
+	switch v := a.(type) {
+	case []any:
+		return len(v)
+	case string:
+		return len(v)
+	case map[string]any:
+		return len(v)
+	case []map[string]any:
+		return len(v)
 	}
+
+	// Try reflection for other slice types
+	rv := reflect.ValueOf(a)
+	if rv.Kind() == reflect.Slice {
+		return rv.Len()
+	}
+
+	log.Printf("unsupported type for len: %T %v", a, a)
+
+	return 0
 }
 
-func add(a, b any) (float64, error) {
-	aVal, err := toFloat64(a)
-	if err != nil {
-		return 0, err
-	}
-	bVal, err := toFloat64(b)
-	if err != nil {
-		return 0, err
-	}
-	return aVal + bVal, nil
+func add(a, b int) int {
+	return a + b
 }
 
-func sub(a, b any) (float64, error) {
-	aVal, err := toFloat64(a)
-	if err != nil {
-		return 0, err
-	}
-	bVal, err := toFloat64(b)
-	if err != nil {
-		return 0, err
-	}
-	return aVal - bVal, nil
+func sub(a, b int) int {
+	return a - b
 }
 
-func gt(a, b any) (bool, error) {
-	aVal, err := toFloat64(a)
-	if err != nil {
-		return false, err
-	}
-	bVal, err := toFloat64(b)
-	if err != nil {
-		return false, err
-	}
-	return aVal > bVal, nil
+func gt(a, b int) bool {
+	return a > b
 }
 
-func lt(a, b any) (bool, error) {
-	aVal, err := toFloat64(a)
-	if err != nil {
-		return false, err
-	}
-	bVal, err := toFloat64(b)
-	if err != nil {
-		return false, err
-	}
-	return aVal < bVal, nil
+func lt(a, b int) bool {
+	return a < b
 }
 
-func mergeRaw(items ...any) any {
-	// Check if all items are slices
-	allSlices := true
-	for _, item := range items {
-		if _, ok := item.([]any); !ok {
-			allSlices = false
-			break
-		}
-	}
-	
-	// If all items are slices, concatenate them
-	if allSlices && len(items) > 0 {
-		var result []any
-		for _, item := range items {
-			if slice, ok := item.([]any); ok {
-				result = append(result, slice...)
-			}
-		}
-		return result
-	}
-	
-	// Otherwise, merge as dictionaries
-	result := make(Dict)
-	for _, m := range items {
-		if dict, ok := m.(Dict); ok {
-			for k, v := range dict {
-				result[k] = v
-			}
-		} else if mapVal, ok := m.(map[string]any); ok {
-			for k, v := range mapVal {
-				result[k] = v
-			}
-		}
-	}
+func mergeRaw(array1 []any, array2 []any) []any {
+	result := make([]any, 0, len(array1)+len(array2))
+	result = append(result, array1...)
+	result = append(result, array2...)
 	return result
 }
 
@@ -222,10 +199,11 @@ func toString(v any) string {
 }
 
 func truncateString(s string, length int) string {
-	if len(s) <= length {
+	runes := []rune(s)
+	if len(runes) <= length {
 		return s
 	}
-	return s[:length] + "..."
+	return string(runes[:length]) + "..."
 }
 
 func regexReplace(pattern, replacement, text string) string {
@@ -237,10 +215,7 @@ func regexReplace(pattern, replacement, text string) string {
 	return re.ReplaceAllString(text, replacement)
 }
 
-func noop(v ...any) any {
-	if len(v) > 0 {
-		return v[0]
-	}
+func noop() string {
 	return ""
 }
 
@@ -254,107 +229,86 @@ func list(items ...any) []any {
 // Data-dependent functions
 
 // Get retrieves a value from data by key (with dot notation support)
-func Get(key string, data Dict, missingKeys *[]string) any {
+func Get(key string, data map[string]any, missingKeys *[]string) any {
 	return get(key, data, missingKeys)
 }
 
-func get(key string, data Dict, missingKeys *[]string) any {
-	keys := strings.Split(key, ".")
+func get(key string, data map[string]any, missingKeys *[]string) any {
+	lookupKey, isOptional := cleanKey(key)
+
+	parts := strings.FieldsFunc(lookupKey, func(r rune) bool {
+		return r == '.' || r == '[' || r == ']'
+	})
 	current := any(data)
-	
-	for _, k := range keys {
-		switch v := current.(type) {
-		case Dict:
-			if val, exists := v[k]; exists {
-				current = val
-			} else {
-				if missingKeys != nil {
-					*missingKeys = append(*missingKeys, key)
-				}
-				return nil
-			}
+
+	if current == nil {
+		log.Printf("get: data is nil for key %q", lookupKey)
+		handleMissingKey(lookupKey, isOptional, missingKeys)
+		return nil
+	}
+
+	for _, part := range parts {
+		if strings.HasPrefix(part, "\"") || strings.HasSuffix(part, "\"") || strings.HasPrefix(part, "'") {
+			log.Printf("get: key part incorrectly has wrapping quotes: %s", part)
+		}
+		switch m := current.(type) {
 		case map[string]any:
-			if val, exists := v[k]; exists {
+			if val, exists := m[part]; exists {
 				current = val
 			} else {
-				if missingKeys != nil {
-					*missingKeys = append(*missingKeys, key)
-				}
+				log.Printf("get: key %q not found in map at path %q", part, lookupKey)
+				handleMissingKey(lookupKey, isOptional, missingKeys)
 				return nil
 			}
 		case []any:
-			if idx, err := strconv.Atoi(k); err == nil && idx >= 0 && idx < len(v) {
-				current = v[idx]
-			} else {
-				if missingKeys != nil {
-					*missingKeys = append(*missingKeys, key)
-				}
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(m) {
+				log.Printf("get: invalid array index %q at path %q", part, lookupKey)
+				handleMissingKey(lookupKey, isOptional, missingKeys)
 				return nil
 			}
+			current = m[index]
 		default:
-			if missingKeys != nil {
-				*missingKeys = append(*missingKeys, key)
-			}
+			log.Printf("get: cannot access %q in type %T at path %q", part, current, lookupKey)
+			handleMissingKey(lookupKey, isOptional, missingKeys)
 			return nil
 		}
 	}
-	
-	return current
-}
 
-// getOptional retrieves an optional value from data using dot notation key
-// Returns empty string if the key is missing (no error)
-func getOptional(key string, data Dict, missingKeys *[]string) any {
-	keys := strings.Split(key, ".")
-	current := any(data)
-	
-	for _, k := range keys {
-		switch v := current.(type) {
-		case Dict:
-			if val, exists := v[k]; exists {
-				current = val
-			} else {
-				// For optional variables, don't add to missing keys
-				return ""
-			}
-		case map[string]any:
-			if val, exists := v[k]; exists {
-				current = val
-			} else {
-				// For optional variables, don't add to missing keys
-				return ""
-			}
-		case []any:
-			if idx, err := strconv.Atoi(k); err == nil && idx >= 0 && idx < len(v) {
-				current = v[idx]
-			} else {
-				// For optional variables, don't add to missing keys
-				return ""
-			}
-		default:
-			// For optional variables, don't add to missing keys
-			return ""
-		}
+	// If we get a float64 that's actually an int, convert it back
+	if num, ok := current.(float64); ok && num == float64(int(num)) {
+		return int(num)
 	}
-	
+
 	return current
 }
 
-func concat(key1, key2 string, data Dict, missingKeys *[]string) string {
+func concat(key1, key2 string, data map[string]any, missingKeys *[]string) string {
 	val1 := get(key1, data, missingKeys)
 	val2 := get(key2, data, missingKeys)
 	return fmt.Sprintf("%v%v", val1, val2)
 }
 
-func getOrOriginal(key string, data Dict, missingKeys *[]string) any {
-	val := get(key, data, missingKeys)
-	if val != nil {
-		return val
+func getOrOriginal(key string, data map[string]any, missingKeys *[]string) any {
+	// Check if parameter is optional
+	isOptional := strings.HasSuffix(key, "?")
+	cleanKey := strings.TrimSuffix(key, "?")
+
+	// Remove .Data. prefix if present
+	cleanKey = removeDataPrefix(cleanKey)
+
+	value := get(cleanKey, data, missingKeys)
+
+	if value == nil {
+		if isOptional {
+			return nil
+		}
+		return fmt.Sprintf("{{%s}}", cleanKey)
 	}
-	return key
+	return value
 }
 
-func slice(key string, start, end int, data Dict, missingKeys *[]string) []any {
+func slice(key string, start, end int, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		if start < 0 {
@@ -371,16 +325,12 @@ func slice(key string, start, end int, data Dict, missingKeys *[]string) []any {
 	return []any{}
 }
 
-func extractSlice(key string, field string, data Dict, missingKeys *[]string) []any {
+func extractSlice(key string, field string, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		result := make([]any, 0, len(arr))
 		for _, item := range arr {
-			if dict, ok := item.(Dict); ok {
-				if fieldVal, exists := dict[field]; exists {
-					result = append(result, fieldVal)
-				}
-			} else if mapVal, ok := item.(map[string]any); ok {
+			if mapVal, ok := item.(map[string]any); ok {
 				if fieldVal, exists := mapVal[field]; exists {
 					result = append(result, fieldVal)
 				}
@@ -391,7 +341,7 @@ func extractSlice(key string, field string, data Dict, missingKeys *[]string) []
 	return []any{}
 }
 
-func dedupeBy(key string, field string, data Dict, missingKeys *[]string) []any {
+func dedupeBy(key string, field string, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		seen := make(map[string]bool)
@@ -399,16 +349,9 @@ func dedupeBy(key string, field string, data Dict, missingKeys *[]string) []any 
 		
 		for _, item := range arr {
 			var fieldVal any
-			if dict, ok := item.(Dict); ok {
+			if mapVal, ok := item.(map[string]any); ok {
 				// Use get to handle nested fields like "metadata.id"
-				fieldVal = get(field, dict, &[]string{})
-			} else if mapVal, ok := item.(map[string]any); ok {
-				// Convert to Dict and use get
-				tempDict := make(Dict)
-				for k, v := range mapVal {
-					tempDict[k] = v
-				}
-				fieldVal = get(field, tempDict, &[]string{})
+				fieldVal = get(field, mapVal, &[]string{})
 			}
 			
 			key := fmt.Sprintf("%v", fieldVal)
@@ -422,7 +365,7 @@ func dedupeBy(key string, field string, data Dict, missingKeys *[]string) []any 
 	return []any{}
 }
 
-func find(key string, field string, value any, data Dict, missingKeys *[]string) any {
+func find(key string, field string, value any, data map[string]any, missingKeys *[]string) any {
 	// If value is a string, check if it's a key in data
 	if strValue, ok := value.(string); ok {
 		if dataValue, exists := data[strValue]; exists {
@@ -434,9 +377,7 @@ func find(key string, field string, value any, data Dict, missingKeys *[]string)
 	if arr, ok := val.([]any); ok {
 		for _, item := range arr {
 			var fieldVal any
-			if dict, ok := item.(Dict); ok {
-				fieldVal = dict[field]
-			} else if mapVal, ok := item.(map[string]any); ok {
+			if mapVal, ok := item.(map[string]any); ok {
 				fieldVal = mapVal[field]
 			}
 			
@@ -448,7 +389,7 @@ func find(key string, field string, value any, data Dict, missingKeys *[]string)
 	return nil
 }
 
-func findByValue(arrayKey string, fieldKey string, targetValue any, data Dict, missingKeys *[]string) any {
+func findByValue(arrayKey string, fieldKey string, targetValue any, data map[string]any, missingKeys *[]string) any {
 	_items := get(arrayKey, data, missingKeys)
 	if _items == nil {
 		return nil
@@ -462,7 +403,7 @@ func findByValue(arrayKey string, fieldKey string, targetValue any, data Dict, m
 	}
 
 	for _, item := range items {
-		itemDict, ok := item.(Dict)
+		itemDict, ok := item.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -479,7 +420,7 @@ func findByValue(arrayKey string, fieldKey string, targetValue any, data Dict, m
 	return nil
 }
 
-func getAtIndex(key string, index int, data Dict, missingKeys *[]string) any {
+func getAtIndex(key string, index int, data map[string]any, missingKeys *[]string) any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		if index >= 0 && index < len(arr) {
@@ -489,82 +430,106 @@ func getAtIndex(key string, index int, data Dict, missingKeys *[]string) any {
 	return nil
 }
 
-func merge(target string, source string, data Dict, missingKeys *[]string) Dict {
-	targetVal := get(target, data, missingKeys)
-	sourceVal := get(source, data, missingKeys)
+func merge(array1 string, array2 string, data map[string]any, missingKeys *[]string) any {
+	items1 := get(array1, data, missingKeys)
+	items2 := get(array2, data, missingKeys)
+
+	// Check if we're merging dictionaries
+	dict1, isDict1 := items1.(map[string]any)
+	dict2, isDict2 := items2.(map[string]any)
 	
-	result := make(Dict)
-	
-	if targetDict, ok := targetVal.(Dict); ok {
-		for k, v := range targetDict {
+	if isDict1 && isDict2 {
+		// Merge dictionaries
+		result := make(map[string]any)
+		for k, v := range dict1 {
 			result[k] = v
 		}
-	} else if targetMap, ok := targetVal.(map[string]any); ok {
-		for k, v := range targetMap {
+		for k, v := range dict2 {
 			result[k] = v
 		}
+		return result
 	}
 	
-	if sourceDict, ok := sourceVal.(Dict); ok {
-		for k, v := range sourceDict {
-			result[k] = v
-		}
-	} else if sourceMap, ok := sourceVal.(map[string]any); ok {
-		for k, v := range sourceMap {
-			result[k] = v
-		}
+	// Otherwise, merge as arrays
+	var slice1, slice2 []any
+
+	// Convert first array
+	switch v := items1.(type) {
+	case []any:
+		slice1 = v
+	case nil:
+		slice1 = []any{}
+	default:
+		slice1 = []any{v}
 	}
-	
+
+	// Convert second array
+	switch v := items2.(type) {
+	case []any:
+		slice2 = v
+	case nil:
+		slice2 = []any{}
+	default:
+		slice2 = []any{v}
+	}
+
+	// Combine slices
+	result := make([]any, 0, len(slice1)+len(slice2))
+	result = append(result, slice1...)
+	result = append(result, slice2...)
 	return result
 }
 
-func coalescelist(keys []string, data Dict, missingKeys *[]string) any {
-	for _, key := range keys {
-		if val := get(key, data, missingKeys); val != nil {
-			return val
-		}
+func coalescelist(list string, data map[string]any, missingKeys *[]string) []any {
+	_list := get(list, data, missingKeys)
+	if _list == nil {
+		return []any{}
 	}
-	return nil
+	if slice, ok := _list.([]any); ok {
+		return slice
+	}
+	return []any{}
 }
 
-func addkey(toObj string, key string, valueKey string, data Dict, missingKeys *[]string) Dict {
+func addkey(toObj string, key string, valueKey string, data map[string]any, missingKeys *[]string) map[string]any {
 	_obj := get(toObj, data, missingKeys)
-	obj, ok := _obj.(Dict)
+	if _obj == nil {
+		*missingKeys = append(*missingKeys, toObj)
+		return nil
+	}
+	
+	// Try to convert to map[string]any
+	obj, ok := _obj.(map[string]any)
 	if !ok {
-		log.Printf("Error casting to dict in addkey: %T %v", _obj, _obj)
+		log.Printf("Error casting to map[string]any in addkey: %T %v", _obj, _obj)
 		return nil
 	}
 
 	value := get(valueKey, data, missingKeys)
 
-	result := make(Dict)
-	for k, v := range obj {
-		result[k] = v
+	result, err := Set(obj, key, value)
+	if err != nil {
+		log.Printf("Error setting key %v to valueKey %v in addkey: %v", key, valueKey, err)
+		return obj
 	}
-	result[key] = value
 
 	return result
 }
 
-func removekey(toObj string, key string, data Dict, missingKeys *[]string) Dict {
+func removekey(toObj string, key string, data map[string]any, missingKeys *[]string) map[string]any {
 	_obj := get(toObj, data, missingKeys)
-	obj, ok := _obj.(Dict)
+	obj, ok := _obj.(map[string]any)
 	if !ok {
 		log.Printf("Error casting to dict in removekey: %T %v", _obj, _obj)
 		return obj
 	}
 
-	result := make(Dict)
-	for k, v := range obj {
-		if k != key {
-			result[k] = v
-		}
-	}
+	delete(obj, key)
 
-	return result
+	return obj
 }
 
-func mapToDict(listKey string, dictKey string, data Dict, missingKeys *[]string) []Dict {
+func mapToDict(listKey string, dictKey string, data map[string]any, missingKeys *[]string) []map[string]any {
 	_list := get(listKey, data, missingKeys)
 	if _list == nil {
 		// Remove the key from missingKeys if it was added
@@ -576,37 +541,30 @@ func mapToDict(listKey string, dictKey string, data Dict, missingKeys *[]string)
 				break
 			}
 		}
-		return []Dict{}
+		return []map[string]any{}
 	}
 
 	list, ok := _list.([]any)
 	if !ok {
 		log.Printf("Error casting to list in mapToDict: %T %v", _list, _list)
-		return []Dict{}
+		return []map[string]any{}
 	}
 
-	result := make([]Dict, 0, len(list))
+	result := make([]map[string]any, 0, len(list))
 	for _, item := range list {
-		result = append(result, Dict{dictKey: item})
+		result = append(result, map[string]any{dictKey: item})
 	}
 
 	return result
 }
 
-func addkeytoall(key string, newKey string, value any, data Dict, missingKeys *[]string) []any {
+func addkeytoall(key string, newKey string, value any, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		result := make([]any, len(arr))
 		for i, item := range arr {
-			if dict, ok := item.(Dict); ok {
-				newDict := make(Dict)
-				for k, v := range dict {
-					newDict[k] = v
-				}
-				newDict[newKey] = value
-				result[i] = newDict
-			} else if mapVal, ok := item.(map[string]any); ok {
-				newDict := make(Dict)
+			if mapVal, ok := item.(map[string]any); ok {
+				newDict := make(map[string]any)
 				for k, v := range mapVal {
 					newDict[k] = v
 				}
@@ -621,24 +579,28 @@ func addkeytoall(key string, newKey string, value any, data Dict, missingKeys *[
 	return []any{}
 }
 
-func incrementCounter(key string, data Dict, missingKeys *[]string) int {
+func incrementCounter(key string, data map[string]any, missingKeys *[]string) int {
 	return incrementCounterBy(key, 1, data, missingKeys)
 }
 
-func incrementCounterBy(key string, amount int, data Dict, missingKeys *[]string) int {
+func incrementCounterBy(key string, amount int, data map[string]any, missingKeys *[]string) int {
 	val := get(key, data, missingKeys)
+	var current int
+	
 	if val == nil {
-		return amount
+		current = 0
+	} else if num, err := toFloat64(val); err == nil {
+		current = int(num)
+	} else {
+		current = 0
 	}
 	
-	if num, err := toFloat64(val); err == nil {
-		return int(num) + amount
-	}
-	
-	return amount
+	newValue := current + amount
+	data[key] = newValue  // Store the new value back in data
+	return newValue
 }
 
-func coalesce(key any, fallbackValue any, data Dict, missingKeys *[]string) any {
+func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]string) any {
 	// Handle the first argument (key) - try to look it up in data if it's a string
 	if strKey, ok := key.(string); ok {
 		// Remove optional suffix if present
@@ -669,15 +631,13 @@ func coalesce(key any, fallbackValue any, data Dict, missingKeys *[]string) any 
 	return fallbackValue
 }
 
-func filter(key string, field string, value any, data Dict, missingKeys *[]string) []any {
+func filter(key string, field string, value any, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		result := make([]any, 0)
 		for _, item := range arr {
 			var fieldVal any
-			if dict, ok := item.(Dict); ok {
-				fieldVal = dict[field]
-			} else if mapVal, ok := item.(map[string]any); ok {
+			if mapVal, ok := item.(map[string]any); ok {
 				fieldVal = mapVal[field]
 			}
 			
@@ -728,7 +688,7 @@ func toFloat64(v any) (float64, error) {
 }
 
 // Set creates a new dict with the specified key set to value
-func Set(data Dict, key string, value any) (Dict, error) {
+func Set(data map[string]any, key string, value any) (map[string]any, error) {
 	if data == nil {
 		return nil, fmt.Errorf("data is nil")
 	}
@@ -756,7 +716,7 @@ func Set(data Dict, key string, value any) (Dict, error) {
 		return nil, err
 	}
 
-	return result.(Dict), nil
+	return result.(map[string]any), nil
 }
 
 func setRecursive(current any, parts []string, value any) (any, error) {
@@ -764,13 +724,9 @@ func setRecursive(current any, parts []string, value any) (any, error) {
 		return value, nil
 	}
 
-	// Convert map[string]any to Dict for consistent handling
-	if mapValue, ok := current.(map[string]any); ok {
-		current = Dict(mapValue)
-	}
 
 	switch m := current.(type) {
-	case Dict:
+	case map[string]any:
 		if len(parts) == 1 {
 			m[parts[0]] = value
 			return m, nil
@@ -782,7 +738,7 @@ func setRecursive(current any, parts []string, value any) (any, error) {
 		// Check if the next part exists
 		if next, exists = m[parts[0]]; !exists {
 			// Create missing nested objects as we go
-			next = Dict{}
+			next = map[string]any{}
 			m[parts[0]] = next
 		}
 
@@ -808,7 +764,7 @@ func setRecursive(current any, parts []string, value any) (any, error) {
 
 		// If the item doesn't exist or isn't a Dict/map, create a new one
 		if item == nil {
-			item = Dict{}
+			item = map[string]any{}
 			m[index] = item
 		}
 
@@ -824,9 +780,35 @@ func setRecursive(current any, parts []string, value any) (any, error) {
 	}
 }
 
+// sliceEnd gets the last n items from a slice
+func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
+	_slice := get(sliceKey, data, missingKeys)
+	if _slice == nil {
+		return nil
+	}
+
+	slice, ok := _slice.([]any)
+	if !ok {
+		*missingKeys = append(*missingKeys, sliceKey)
+		return nil
+	}
+
+	if len(slice) == 0 {
+		return slice
+	}
+
+	// If we want all items or more than available, return everything
+	if n >= len(slice) {
+		return slice
+	}
+
+	// Get the last n items
+	return slice[len(slice)-n:]
+}
+
 // sliceEndKeepFirstUserMessage gets the last n messages from a slice, 
 // but ensures the first user message is included if it would be cut off
-func sliceEndKeepFirstUserMessage(sliceKey string, n int, data Dict, missingKeys *[]string) []any {
+func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
 	_slice := get(sliceKey, data, missingKeys)
 	if _slice == nil {
 		return nil
@@ -882,13 +864,7 @@ func sliceEndKeepFirstUserMessage(sliceKey string, n int, data Dict, missingKeys
 
 // isUserMessage checks if a message has role "user"
 func isUserMessage(msg any) bool {
-	if msgDict, ok := msg.(Dict); ok {
-		if role, exists := msgDict["role"]; exists {
-			if roleStr, ok := role.(string); ok && roleStr == "user" {
-				return true
-			}
-		}
-	} else if msgMap, ok := msg.(map[string]any); ok {
+	if msgMap, ok := msg.(map[string]any); ok {
 		if role, exists := msgMap["role"]; exists {
 			if roleStr, ok := role.(string); ok && roleStr == "user" {
 				return true

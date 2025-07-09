@@ -2,547 +2,593 @@ package template
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"text/template"
+
+	common "github.com/erdoai/erdo-common/types"
+	utils "github.com/erdoai/erdo-common/utils"
 )
 
-// ParameterHydrationBehaviour constants
-const (
-	ParameterHydrationBehaviourRaw      = "raw"
-	ParameterHydrationBehaviourHydrated = "hydrated"
-)
-
-// hydrateString processes template strings with variable substitution
-func hydrateString(userTemplate string, data *Dict) (string, error) {
-	if data == nil {
-		return userTemplate, nil
-	}
-
-	var missingKeys []string
-
-	// Check if this is a simple variable replacement (whole string is a template)
-	if matches := wholeVarRegex.FindStringSubmatch(userTemplate); len(matches) > 0 {
-		key := ParseTemplateKey(matches[1])
-		if key.IsOptional {
-			// For optional keys, return empty string if missing
-			if value := get(key.Key, *data, &missingKeys); value != nil {
-				return fmt.Sprintf("%v", value), nil
-			}
-			return "", nil
-		} else {
-			// For required keys, return the value or error if missing
-			if value := get(key.Key, *data, &missingKeys); value != nil {
-				return fmt.Sprintf("%v", value), nil
-			}
-			if len(missingKeys) > 0 {
-				availableKeys := getAvailableKeys(*data)
-				return "", &InfoNeededError{
-					MissingKeys:   missingKeys,
-					AvailableKeys: availableKeys,
-					Err:           fmt.Errorf("missing key: %s", key.Key),
-				}
-			}
-		}
-	}
-
-	// Check if this is a single function call
-	if matches := wholeFuncRegex.FindStringSubmatch(userTemplate); len(matches) > 0 {
-		key := ParseTemplateKey(matches[1])
-		
-		// Check if this contains nested function calls that need special parameter handling
-		needsTemplateParsing := false
-		if strings.Contains(key.Key, "(") && strings.Contains(key.Key, ")") {
-			// Check if any nested function needs .Data and .MissingKeys
-			for funcName := range dataFuncMap {
-				if strings.Contains(key.Key, funcName) {
-					needsTemplateParsing = true
-					break
-				}
-			}
-		}
-		
-		if !needsTemplateParsing {
-			// Process the function call directly for simple cases
-			if value, err := processSingleFunction(key.Key, *data, &missingKeys); err == nil {
-				return fmt.Sprintf("%v", value), nil
-			} else {
-				log.Printf("error hydrating function key: %s, error: %v", key.Key, err)
-				// ignore errors and fallback to parsing template
-			}
-		}
-	}
-
-	// For complex templates or multiple substitutions, use Go template engine
-	return executeTemplate(userTemplate, *data, &missingKeys)
+// Hydrate parameters
+type Key struct {
+	Key        string
+	IsOptional bool
 }
 
-// hydrateDict processes dictionary values with template substitution
-func hydrateDict(dict Dict, data *Dict, parameterHydrationBehaviour *Dict) (Dict, error) {
-	result := make(Dict)
-	
-	for key, value := range dict {
-		shouldHydrate, fieldBehaviour := shouldHydrateField(key, parameterHydrationBehaviour)
-		if shouldHydrate {
-			hydratedValue, err := Hydrate(value, data, fieldBehaviour)
-			if err != nil {
-				return nil, fmt.Errorf("error hydrating key %s: %w", key, err)
-			}
-			result[key] = hydratedValue
-		} else {
-			result[key] = value
-		}
-	}
-	
-	return result, nil
+type KeyDefinitions map[string]Key
+
+type InfoNeededError struct {
+	MissingKeys   []string
+	AvailableKeys []string
+	Err           error
 }
 
-// hydrateSlice processes slice values with template substitution
-func hydrateSlice(slice []any, data *Dict, parameterHydrationBehaviour *Dict) ([]any, error) {
-	result := make([]any, len(slice))
-	
-	for i, item := range slice {
-		hydratedItem, err := Hydrate(item, data, parameterHydrationBehaviour)
-		if err != nil {
-			return nil, fmt.Errorf("error hydrating slice item %d: %w", i, err)
-		}
-		result[i] = hydratedItem
-	}
-	
-	return result, nil
+func (e *InfoNeededError) Error() string {
+	return fmt.Sprintf("info needed for keys %v: %v. Available keys: %v", e.MissingKeys, e.Err, e.AvailableKeys)
 }
 
-// shouldHydrateField determines if a field should be hydrated based on behaviour config
-func shouldHydrateField(key string, parameterHydrationBehaviour *Dict) (bool, *Dict) {
-	if parameterHydrationBehaviour == nil {
-		return true, nil
-	}
-
-	// Check if there's a specific behaviour for this key
-	if behaviour, exists := (*parameterHydrationBehaviour)[key]; exists {
-		switch b := behaviour.(type) {
-		case string:
-			// If the behavior is a string, it applies to this field directly
-			return b != ParameterHydrationBehaviourRaw, nil
-		case Dict:
-			// If the behavior is a Dict, it contains behaviors for nested fields
-			// The field itself should be hydrated, but with the nested behavior
-			return true, &b
-		case map[string]any:
-			// Convert to Dict
-			dictB := make(Dict)
-			for k, v := range b {
-				dictB[k] = v
-			}
-			// Same as Dict case
-			return true, &dictB
-		}
-	}
-
-	return true, nil
+func (e *InfoNeededError) Unwrap() error {
+	return e.Err
 }
 
-// executeTemplate executes a Go template with the provided data
-func executeTemplate(userTemplate string, data Dict, missingKeys *[]string) (string, error) {
-	// Preprocess the template to handle simple variables and functions
-	processedTemplate := preprocessSimpleVariables(userTemplate, data, missingKeys)
-	processedTemplate = preprocessTemplate(processedTemplate)
-	
-	// Create template with custom functions
-	tmpl, err := template.New("template").Funcs(funcMap).Parse(processedTemplate)
+func getData(stateParameters *map[string]any) (*map[string]any, error) {
+	if stateParameters == nil {
+		return nil, nil
+	}
+
+	data, err := utils.JSONToDict(utils.JSON(*stateParameters))
 	if err != nil {
-		return "", fmt.Errorf("template parse error: %w", err)
+		return nil, fmt.Errorf("error cloning data: %w", err)
 	}
 
-	// Prepare template data
-	templateData := map[string]any{
-		"Data":        data,
-		"MissingKeys": missingKeys,
-	}
-	
-	// Also add direct access to data values for simple variable substitution
-	for k, v := range data {
-		templateData[k] = v
-	}
-
-	// Execute template
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, templateData); err != nil {
-		return "", fmt.Errorf("template execution error: %w", err)
-	}
-
-	result := buf.String()
-
-	// Check if we have missing keys after execution
-	if len(*missingKeys) > 0 {
-		// Deduplicate missing keys
-		uniqueKeys := deduplicateMissingKeys(*missingKeys)
-		availableKeys := getAvailableKeys(data)
-		return "", &InfoNeededError{
-			MissingKeys:   uniqueKeys,
-			AvailableKeys: availableKeys,
-			Err:           fmt.Errorf("missing keys after template execution"),
+	// Copy non-JSONable values from the original data map to ensure nothing is lost
+	// in the conversion process.
+	for key, value := range *stateParameters {
+		if _, ok := data[key]; !ok { // TODO: recurse?
+			data[key] = value
 		}
 	}
 
-	return result, nil
+	return &data, nil
 }
 
-// preprocessSimpleVariables converts simple {{variable}} patterns to template function calls
-func preprocessSimpleVariables(userTemplate string, data Dict, missingKeys *[]string) string {
-	// Reserved template words that should not be processed
-	reserved := map[string]bool{
-		"if": true, "else": true, "end": true, "range": true, 
-		"with": true, "define": true, "template": true, "block": true,
+func Hydrate(value any, stateParameters *map[string]any, parameterHydrationBehaviour *map[string]any) (any, error) {
+	if stateParameters == nil {
+		return value, nil
 	}
-	
-	// Regular expression to match simple variables (not function calls)
-	simpleVarRegex := regexp.MustCompile(`{{(\s*[a-zA-Z_][a-zA-Z0-9_\.]*\??\s*)}}`)
-	
-	return simpleVarRegex.ReplaceAllStringFunc(userTemplate, func(match string) string {
-		// Extract the variable name (without braces and whitespace)
-		varName := strings.TrimSpace(match[2:len(match)-2])
-		
-		// Check if it's an optional variable
-		isOptional := strings.HasSuffix(varName, "?")
-		cleanVarName := varName
-		if isOptional {
-			cleanVarName = varName[:len(varName)-1]
-		}
-		
-		// Skip reserved words
-		if reserved[cleanVarName] {
-			return match
-		}
-		
-		// Skip if it contains a space (likely a function call)
-		if strings.Contains(cleanVarName, " ") {
-			return match
-		}
-		
-		// Check if the variable exists in data
-		val := get(cleanVarName, data, &[]string{})
-		if val == nil && !isOptional {
-			// Add to missing keys
-			*missingKeys = append(*missingKeys, cleanVarName)
-			// Convert to a template expression that will be handled properly
-			return fmt.Sprintf("{{get %q .Data .MissingKeys}}", cleanVarName)
-		}
-		
-		// For optional variables, always use getOptional
-		// This avoids the template parser error with '?' character
-		if isOptional {
-			return fmt.Sprintf("{{getOptional %q .Data .MissingKeys}}", cleanVarName)
-		}
-		
-		// Return the actual value wrapped in Go template syntax
-		return fmt.Sprintf("{{index . %q}}", cleanVarName)
-	})
-}
 
-// preprocessTemplate adds .Data and .MissingKeys to functions that need them
-func preprocessTemplate(userTemplate string) string {
-	// Process functions that need .Data and .MissingKeys parameters
-	result := userTemplate
-	
-	// Add data parameters to functions that need them
-	for funcName := range dataFuncMap {
-		// Simple function call pattern: {{funcName arg1 arg2}}
-		_ = fmt.Sprintf(`\{\{\s*%s\s+([^}]+)\}\}`, funcName)
-		_ = fmt.Sprintf(`{{%s $1 $.Data $.MissingKeys}}`, funcName)
-		
-		// Only replace if it doesn't already have .Data or .MissingKeys
-		matches := funcRegex.FindAllString(result, -1)
-		for _, match := range matches {
-			if strings.Contains(match, funcName) && 
-			   !strings.Contains(match, ".Data") && 
-			   !strings.Contains(match, ".MissingKeys") {
-				// This is a more complex replacement that preserves the original structure
-				processed := processNestedFunctionCalls(strings.Trim(match, "{}"))
-				if processed != strings.Trim(match, "{}") {
-					result = strings.ReplaceAll(result, match, "{{"+processed+"}}")
-				}
+	data, err := getData(stateParameters)
+	if err != nil {
+		return nil, fmt.Errorf("error getting data: %w", err)
+	}
+
+	switch v := value.(type) {
+	case string:
+		if parameterHydrationBehaviour != nil {
+			panic(fmt.Sprintf("hydrating string with behaviour %+v", parameterHydrationBehaviour))
+		}
+		return hydrateString(v, data)
+	case map[string]any:
+		return hydrateDict(v, data, parameterHydrationBehaviour)
+	case []any:
+		return hydrateSlice(v, data, parameterHydrationBehaviour)
+	case []map[string]any:
+		// Convert []map[string]any to []any to reuse existing hydrateSlice logic
+		anySlice := make([]any, len(v))
+		for i, d := range v {
+			anySlice[i] = d
+		}
+		res, err := hydrateSlice(anySlice, data, parameterHydrationBehaviour)
+		if err != nil {
+			return nil, err
+		}
+		// Convert back to []map[string]any
+		dictSlice := make([]map[string]any, len(res))
+		for i, item := range res {
+			if dictItem, ok := item.(map[string]any); ok {
+				dictSlice[i] = dictItem
+			} else {
+				return nil, fmt.Errorf("expected map[string]any, got %T", item)
 			}
 		}
+		return dictSlice, nil
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, complex64, complex128:
+		return v, nil
+	default:
+		log.Printf("!! unable to hydrate unknown type %T", v)
+		return v, nil
 	}
-	
-	return result
 }
 
-// processNestedFunctionCalls handles nested function calls
+// shouldHydrateField checks if a specific field should be hydrated based on the parameterHydrationBehaviour
+func shouldHydrateField(key string, parameterHydrationBehaviour *map[string]any) (bool, *map[string]any) {
+	if parameterHydrationBehaviour == nil {
+		return true, nil // Default behavior is to hydrate
+	}
+
+	var childBehaviour *map[string]any
+
+	// Check if this specific key has hydration behavior defined
+	if nestedBehaviour, ok := (*parameterHydrationBehaviour)[key]; ok {
+		// Direct raw behavior assignment
+		if raw, ok := nestedBehaviour.(common.ParameterHydrationBehaviour); ok {
+			if raw == common.ParameterHydrationBehaviourRaw {
+				return false, nil // Don't hydrate if marked as raw
+			}
+		} else if behaviour, ok := nestedBehaviour.(map[string]any); ok {
+			// The nested object has its own behavior configuration
+			childBehaviour = &behaviour
+		}
+	}
+
+	return true, childBehaviour // Default to hydrating if not explicitly marked as raw
+}
+
+var varRegexStr = `(?:{{|%\()\s*([^\s.$][^\s]*?(?:\.[^\s]+?)*)\s*(?:}}|\)s)`
+var funcRegexStr = `{{([^}]+)}}`
+var funcRegex = regexp.MustCompile(funcRegexStr)
+var wholeVarRegexStr = fmt.Sprintf("^%s$", varRegexStr)
+var wholeFuncRegexStr = fmt.Sprintf("^%s$", funcRegexStr)
+var directVarRegex = regexp.MustCompile(varRegexStr)
+var wholeVarRegex = regexp.MustCompile(wholeVarRegexStr)
+var wholeFuncRegex = regexp.MustCompile(wholeFuncRegexStr)
+var optionalVarRegex = regexp.MustCompile(`{{([^{}]+?)\?}}`)
+
+// hasDataPrefix checks if a string starts with .Data. or $.Data.
+func hasDataPrefix(str string) bool {
+	return strings.HasPrefix(str, ".Data.") || strings.HasPrefix(str, "$.Data.")
+}
+
+// removeDataPrefix removes .Data. or $.Data. prefix if present
+func removeDataPrefix(str string) string {
+	if strings.HasPrefix(str, ".Data.") {
+		return strings.TrimPrefix(str, ".Data.")
+	}
+	if strings.HasPrefix(str, "$.Data.") {
+		return strings.TrimPrefix(str, "$.Data.")
+	}
+	return str
+}
+
+// containsDataSuffix checks if a string contains .Data or $.Data suffix
+func containsDataSuffix(str string) bool {
+	return strings.Contains(str, " .Data") || strings.Contains(str, " $.Data")
+}
+
+// containsMissingKeysSuffix checks if a string contains .MissingKeys or $.MissingKeys suffix
+func containsMissingKeysSuffix(str string) bool {
+	return strings.Contains(str, ".MissingKeys") || strings.Contains(str, "$.MissingKeys")
+}
+
+// appendDataParams adds .Data and .MissingKeys parameters to a function call if not already present
+func appendDataParams(funcCall string) string {
+	if containsDataSuffix(funcCall) && containsMissingKeysSuffix(funcCall) {
+		return funcCall
+	}
+	return funcCall + " $.Data $.MissingKeys"
+}
+
+// ParseTemplateKey creates a Key struct from a string, handling optional parameters
+// (those with a ? suffix) and special prefixes like ".Data." or "$.Data.".
+func ParseTemplateKey(key string) Key {
+	// Check if parameter is optional
+	isOptional := strings.HasSuffix(key, "?")
+	cleanKey := strings.TrimSuffix(key, "?")
+
+	// Remove .Data. prefix if present
+	cleanKey = removeDataPrefix(cleanKey)
+
+	return Key{
+		Key:        cleanKey,
+		IsOptional: isOptional,
+	}
+}
+
+// findTemplateKeysToHydrate extracts template keys from a string using a regex
+// and creates Key objects representing each extracted key with its optionality.
+// The regex should extract the exact content (including the optional ? suffix) from template variables.
+func findTemplateKeysToHydrate(s any, regex *regexp.Regexp, parameterHydrationBehaviour *map[string]any) []Key {
+	// Convert input to string if possible
+	var str string
+	switch v := s.(type) {
+	case string:
+		str = v
+	case []byte:
+		str = string(v)
+	default:
+		// For non-string types, return empty result
+		return []Key{}
+	}
+
+	matches := regex.FindAllStringSubmatch(str, -1)
+	keys := make([]Key, 0, len(matches))
+	for _, match := range matches {
+		if len(match) != 2 {
+			continue // Skip if we didn't get the expected capture group
+		}
+
+		// match[0] is the entire match including braces: "{{key?}}"
+		// match[1] is the extracted content inside the braces: "key?"
+		keyStr := strings.TrimSpace(match[1])
+
+		// Check for optional marker (? suffix)
+		isOptional := strings.HasSuffix(keyStr, "?")
+		cleanKey := strings.TrimSuffix(keyStr, "?")
+
+		// Remove .Data. prefix if present
+		cleanKey = removeDataPrefix(cleanKey)
+
+		keys = append(keys, Key{
+			Key:        cleanKey,
+			IsOptional: isOptional,
+		})
+	}
+
+	return keys
+}
+
+// cleanKey processes a key string to determine if it's optional and returns the cleaned key.
+// Returns the key without the optional marker and a boolean indicating if it was optional.
+func cleanKey(key string) (string, bool) {
+	// Check if parameter is optional (has ? suffix)
+	isOptional := strings.HasSuffix(key, "?")
+	cleanKey := strings.TrimSuffix(key, "?")
+
+	// Remove .Data. prefix if present
+	cleanKey = removeDataPrefix(cleanKey)
+
+	return cleanKey, isOptional
+}
+
+func FindTemplateKeysToHydrate(s any, includeOptional bool, parameterHydrationBehaviour *map[string]any) []Key {
+	// For simple string inputs, use the existing function
+	if str, ok := s.(string); ok {
+		keys := findTemplateKeysToHydrate(str, directVarRegex, parameterHydrationBehaviour)
+
+		res := make([]Key, 0, len(keys))
+		for _, key := range keys {
+			if !includeOptional && key.IsOptional {
+				continue
+			}
+			res = append(res, key)
+		}
+
+		return res
+	}
+
+	// For complex data structures, traverse recursively
+	var keys []Key
+	switch v := s.(type) {
+	case map[string]any:
+		keys = findKeysInDict(v, includeOptional, parameterHydrationBehaviour)
+	case []any:
+		keys = findKeysInSlice(v, includeOptional, parameterHydrationBehaviour)
+	default:
+		log.Printf("!! unable to find keys in %T", v)
+		return []Key{}
+	}
+
+	// Remove duplicates while preserving order
+	seen := make(map[string]bool)
+	uniqueKeys := make([]Key, 0, len(keys))
+	for _, key := range keys {
+		if !seen[key.Key] {
+			seen[key.Key] = true
+			uniqueKeys = append(uniqueKeys, key)
+		}
+	}
+
+	return uniqueKeys
+}
+
+func findKeysInDict(dict map[string]any, includeOptional bool, parameterHydrationBehaviour *map[string]any) []Key {
+	var keys []Key
+
+	for k, v := range dict {
+		// Check if this specific field should be hydrated
+		shouldHydrate, childBehaviour := shouldHydrateField(k, parameterHydrationBehaviour)
+		if !shouldHydrate {
+			continue
+		}
+
+		// Process this value based on its type
+		switch tv := v.(type) {
+		case string:
+			fieldKeys := findTemplateKeysToHydrate(tv, directVarRegex, childBehaviour)
+			for _, key := range fieldKeys {
+				if includeOptional || !key.IsOptional {
+					keys = append(keys, key)
+				}
+			}
+		case map[string]any:
+			fieldKeys := findKeysInDict(tv, includeOptional, childBehaviour)
+			keys = append(keys, fieldKeys...)
+		case []any:
+			fieldKeys := findKeysInSlice(tv, includeOptional, childBehaviour)
+			keys = append(keys, fieldKeys...)
+		}
+	}
+
+	return keys
+}
+
+func findKeysInSlice(slice []any, includeOptional bool, parameterHydrationBehaviour *map[string]any) []Key {
+	var keys []Key
+
+	for _, v := range slice {
+		// Process this value based on its type
+		switch tv := v.(type) {
+		case string:
+			// We pass down the same behaviour for each element in the slice
+			fieldKeys := findTemplateKeysToHydrate(tv, directVarRegex, parameterHydrationBehaviour)
+			for _, key := range fieldKeys {
+				if includeOptional || !key.IsOptional {
+					keys = append(keys, key)
+				}
+			}
+		case map[string]any:
+			fieldKeys := findKeysInDict(tv, includeOptional, parameterHydrationBehaviour)
+			keys = append(keys, fieldKeys...)
+		case []any:
+			fieldKeys := findKeysInSlice(tv, includeOptional, parameterHydrationBehaviour)
+			keys = append(keys, fieldKeys...)
+		}
+	}
+
+	return keys
+}
+
+func FindTemplateKeyStringsToHydrate(s any, includeOptional bool, parameterHydrationBehaviour *map[string]any) []string {
+	keys := FindTemplateKeysToHydrate(s, includeOptional, parameterHydrationBehaviour)
+	return getKeyStrings(keys)
+}
+
+var reservedWords = []string{"if", "range", "with", "end", "else", "template", "block", "define"}
+
+func parseTemplate(input string) (string, error) {
+	// First, replace function calls
+	res := funcRegex.ReplaceAllStringFunc(input, func(match string) string {
+		// Skip if already contains .Data
+		if containsDataSuffix(match) {
+			return match
+		}
+
+		// Extract the function call from the match
+		funcCall := strings.TrimSpace(funcRegex.FindStringSubmatch(match)[1])
+
+		// Check if this is actually a function call (has a space) vs a variable
+		if !strings.Contains(funcCall, " ") {
+			// This is a variable, not a function call
+			return match
+		}
+
+		firstWord := strings.Fields(funcCall)[0]
+
+		// Skip reserved words unless they contain nested functions
+		if slices.Contains(reservedWords, firstWord) {
+			// Check if this reserved word statement contains nested function calls
+			if strings.Contains(funcCall, "(") && strings.Contains(funcCall, ")") {
+				// Process any nested function calls within reserved word statements
+				processedCall := processReservedWordWithNestedFunctions(funcCall)
+				return fmt.Sprintf("{{%s}}", processedCall)
+			}
+			return match
+		}
+
+		// Skip special characters
+		firstLetter := string(funcCall[0])
+		if slices.Contains([]string{"$", "-"}, firstLetter) {
+			return match
+		}
+
+		// Process the function call recursively to handle nested functions
+		// This will add .Data and .MissingKeys to any data functions
+		processedCall := processNestedFunctionCalls(funcCall)
+
+		return fmt.Sprintf("{{%s}}", processedCall)
+	})
+
+	// Then, replace direct variable references
+	res = directVarRegex.ReplaceAllStringFunc(res, func(match string) string {
+		content := strings.TrimSpace(match[2 : len(match)-2])
+		firstWord := strings.Fields(content)[0]
+
+		if slices.Contains(reservedWords, firstWord) {
+			return match
+		}
+
+		firstLetter := string(content[0])
+		if firstLetter == "$" {
+			return match
+		}
+
+		// Check if the match is already wrapped in getOrOriginal
+		if strings.HasPrefix(content, "getOrOriginal") {
+			return match
+		}
+
+		// Wrap the result in nilToEmptyString to handle nil values
+		return fmt.Sprintf("{{nilToEmptyString (getOrOriginal \"%v\" $.KeyDefinitions $.Data $.MissingKeys)}}", content)
+	})
+
+	// Create a template with our custom functions to test for errors
+	t := template.New("test").Funcs(funcMap)
+
+	_, err := t.Parse(res)
+	if err != nil {
+		log.Printf("!!invalid template syntax: %v in template: %v", err, res)
+		return "", fmt.Errorf("invalid template syntax: %w in template: %v", err, res)
+	}
+
+	return res, nil
+}
+
+// processNestedFunctionCalls recursively processes function calls and ensures that
+// all functions have the necessary .Data and .MissingKeys parameters
 func processNestedFunctionCalls(funcCall string) string {
-	// Check if this contains a nested function call with parentheses
-	openParenIndex := strings.Index(funcCall, "(")
-	if openParenIndex <= 0 {
-		// No nested function, check if this function needs .Data and .MissingKeys
-		parts := strings.Fields(funcCall)
-		if len(parts) == 0 {
-			return funcCall
-		}
-		
-		funcName := parts[0]
-		_, requiresData := dataFuncMap[funcName]
-		if requiresData && !containsDataSuffix(funcCall) && !containsMissingKeysSuffix(funcCall) {
-			return appendDataParams(funcCall)
-		}
+
+	// Extract the function name
+	parts := strings.Fields(funcCall)
+	if len(parts) == 0 {
 		return funcCall
 	}
 
-	// Extract the outer function name
-	outerFunc := strings.TrimSpace(funcCall[:openParenIndex])
+	funcName := parts[0]
 
-	// Process all arguments after the function name
-	allArgs := funcCall[openParenIndex+1:] // +1 to skip the opening paren
-	// Remove the closing paren if present
-	if strings.HasSuffix(allArgs, ")") {
-		allArgs = allArgs[:len(allArgs)-1]
+	// Process all arguments in the function call
+	var result strings.Builder
+	result.WriteString(funcName)
+
+	// Parse the rest of the function call to handle all arguments
+	rest := funcCall[len(funcName):]
+	rest = strings.TrimSpace(rest)
+
+	// Process each argument
+	i := 0
+	for i < len(rest) {
+		ch := rest[i]
+
+		if ch == '(' {
+			// Found a nested function call
+			result.WriteByte(' ')
+			result.WriteByte('(')
+			i++ // skip the opening parenthesis
+
+			// Find the matching closing parenthesis
+			parenCount := 1
+			start := i
+			for i < len(rest) && parenCount > 0 {
+				if rest[i] == '(' {
+					parenCount++
+				} else if rest[i] == ')' {
+					parenCount--
+				}
+				i++
+			}
+
+			if parenCount == 0 {
+				// Extract and process the nested function
+				nestedFunc := rest[start : i-1]
+				processedNested := processNestedFunctionCalls(nestedFunc)
+				result.WriteString(processedNested)
+				result.WriteByte(')')
+			} else {
+				// Malformed, just return original
+				return funcCall
+			}
+		} else if ch == '"' || ch == '\'' {
+			// Handle quoted strings
+			result.WriteByte(' ')
+			quote := ch
+			result.WriteByte(quote)
+			i++
+			for i < len(rest) && rest[i] != quote {
+				if rest[i] == '\\' && i+1 < len(rest) {
+					result.WriteByte(rest[i])
+					i++
+				}
+				result.WriteByte(rest[i])
+				i++
+			}
+			if i < len(rest) {
+				result.WriteByte(rest[i]) // closing quote
+				i++
+			}
+		} else if ch == ' ' || ch == '\t' || ch == '\n' {
+			// Skip whitespace
+			i++
+		} else {
+			// Regular argument
+			result.WriteByte(' ')
+			start := i
+			for i < len(rest) && rest[i] != ' ' && rest[i] != '(' && rest[i] != ')' {
+				i++
+			}
+			result.WriteString(rest[start:i])
+		}
 	}
-	processedArgs := processAllArguments(allArgs)
 
-	// Reconstruct the function call with processed arguments
-	result := outerFunc + " (" + processedArgs + ")"
+	finalResult := result.String()
 
-	// Check if the outer function requires .Data and .MissingKeys
-	_, outerRequiresData := dataFuncMap[outerFunc]
-	if outerRequiresData && !containsDataSuffix(result) && !containsMissingKeysSuffix(result) {
-		result = appendDataParams(result)
+	// Add .Data and .MissingKeys if the function requires them and they're not already present
+	_, requiresData := dataFuncMap[funcName]
+	if requiresData && !containsDataSuffix(finalResult) {
+		finalResult = appendDataParams(finalResult)
 	}
 
-	return result
+	return finalResult
 }
 
-// processAllArguments processes all arguments in a function call
-func processAllArguments(args string) string {
-	// First check if this is a function call that should be processed as a whole
-	trimmedArgs := strings.TrimSpace(args)
-	parts := strings.Fields(trimmedArgs)
-	
-	// If the first part is a data function and we have more parts, process as a complete function call
-	if len(parts) > 0 {
-		funcName := parts[0]
-		if _, isDataFunc := dataFuncMap[funcName]; isDataFunc && len(parts) > 1 {
-			// This is a complete function call that needs data params
-			if !containsDataSuffix(trimmedArgs) && !containsMissingKeysSuffix(trimmedArgs) {
-				// Add data params after all the existing arguments
-			result := trimmedArgs + " $.Data $.MissingKeys"
-				return result
-			}
-			return trimmedArgs
-		}
-	}
-	
-	// Otherwise, process arguments individually
-	var result strings.Builder
-	var currentArg strings.Builder
-	parenCount := 0
-	inQuotes := false
-	quote := byte(0)
+// processReservedWordWithNestedFunctions handles reserved word statements (like if, range)
+// that contain nested function calls, processing only the nested function calls
+func processReservedWordWithNestedFunctions(statement string) string {
 
-	for i := 0; i < len(args); i++ {
-		char := args[i]
-		
-		if !inQuotes && (char == '"' || char == '\'') {
-			inQuotes = true
-			quote = char
-		} else if inQuotes && char == quote {
-			inQuotes = false
-			quote = 0
-		} else if !inQuotes {
-			if char == '(' {
-				parenCount++
-			} else if char == ')' {
-				parenCount--
-			}
-		}
-		
-		// If we're at a space and not in quotes/parentheses, we've found an argument boundary
-		if !inQuotes && parenCount == 0 && char == ' ' {
-			arg := strings.TrimSpace(currentArg.String())
-			if arg != "" {
-				if result.Len() > 0 {
-					result.WriteByte(' ')
+	// Parse parentheses manually to handle nested function calls correctly
+	result := strings.Builder{}
+	i := 0
+	
+	for i < len(statement) {
+		if statement[i] == '(' {
+			// Find the matching closing parenthesis
+			parenCount := 1
+			start := i
+			i++ // skip the opening parenthesis
+			
+			for i < len(statement) && parenCount > 0 {
+				if statement[i] == '(' {
+					parenCount++
+				} else if statement[i] == ')' {
+					parenCount--
 				}
-				result.WriteString(processArgumentExpression(arg))
+				i++
 			}
-			currentArg.Reset()
+			
+			if parenCount == 0 {
+				// Extract the content within parentheses
+				inner := strings.TrimSpace(statement[start+1 : i-1])
+				
+				// Check if this looks like a function call
+				if strings.Contains(inner, " ") {
+					parts := strings.Fields(inner)
+					if len(parts) > 0 {
+						funcName := parts[0]
+						// Skip if it's a reserved word itself
+						if slices.Contains(reservedWords, funcName) {
+							result.WriteString(statement[start:i])
+							continue
+						}
+
+						// Process the function call
+						processed := processNestedFunctionCalls(inner)
+						result.WriteString("(" + processed + ")")
+						continue
+					}
+				}
+				
+				// Not a function call, keep original
+				result.WriteString(statement[start:i])
+			} else {
+				// Malformed parentheses, keep original
+				result.WriteString(statement[start:])
+				break
+			}
 		} else {
-			currentArg.WriteByte(char)
+			result.WriteByte(statement[i])
+			i++
 		}
 	}
-	
-	// Process the last argument
-	arg := strings.TrimSpace(currentArg.String())
-	if arg != "" {
-		if result.Len() > 0 {
-			result.WriteByte(' ')
-		}
-		result.WriteString(processArgumentExpression(arg))
-	}
-	
+
 	return result.String()
 }
 
-// processArgumentExpression processes a single argument expression
-func processArgumentExpression(expr string) string {
-	expr = strings.TrimSpace(expr)
-	
-	// If it's quoted, return as-is
-	if (strings.HasPrefix(expr, "\"") && strings.HasSuffix(expr, "\"")) ||
-	   (strings.HasPrefix(expr, "'") && strings.HasSuffix(expr, "'")) {
-		return expr
-	}
-	
-	// Check if this is a nested function call (starts with a function name and has parentheses)
-	if strings.Contains(expr, "(") && strings.Contains(expr, ")") {
-		// Process it as a nested function call
-		return processNestedFunctionCalls(expr)
-	}
-	
-	// For simple expressions without parentheses, check if it's a function that needs parameters
-	parts := strings.Fields(expr)
-	if len(parts) > 0 {
-		funcName := parts[0]
-		_, requiresData := dataFuncMap[funcName]
-		if requiresData && !containsDataSuffix(expr) && !containsMissingKeysSuffix(expr) {
-			return appendDataParams(expr)
-		}
-	}
-	
-	return expr
-}
-
-// processSingleFunction processes a single function call
-func processSingleFunction(funcCall string, data Dict, missingKeys *[]string) (any, error) {
-	// Parse the function call
-	parts := strings.Fields(funcCall)
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("empty function call")
-	}
-	
-	funcName := parts[0]
-	args := parts[1:]
-	
-	// Process arguments
-	processedArgs := make([]any, len(args))
-	for i, arg := range args {
-		// Convert string arguments to appropriate types
-		if strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"") {
-			processedArgs[i] = strings.Trim(arg, "\"")
-		} else if strings.HasPrefix(arg, "'") && strings.HasSuffix(arg, "'") {
-			processedArgs[i] = strings.Trim(arg, "'")
-		} else {
-			// Try to get from data first
-			if value := get(arg, data, missingKeys); value != nil {
-				processedArgs[i] = value
-			} else {
-				processedArgs[i] = arg
-			}
-		}
-	}
-	
-	// Get the function
-	fn, ok := funcMap[funcName]
-	if !ok {
-		return nil, fmt.Errorf("unknown function: %s", funcName)
-	}
-	
-	_, isBasicFunction := basicFuncMap[funcName]
-	fnValue := reflect.ValueOf(fn)
-	fnType := fnValue.Type()
-	
-	var callArgs []reflect.Value
-	var err error
-	
-	if isBasicFunction {
-		callArgs, err = prepareBasicFunctionArgs(funcName, processedArgs, fnType)
-	} else {
-		callArgs, err = prepareDataFunctionArgs(funcName, processedArgs, fnType, data, missingKeys)
-	}
-	
-	if err != nil {
-		return nil, err
-	}
-	
-	// Call the function
-	results := fnValue.Call(callArgs)
-	if len(results) == 0 {
-		return nil, nil
-	}
-	
-	// Handle error return values
-	if len(results) == 2 && !results[1].IsNil() {
-		if err, ok := results[1].Interface().(error); ok {
-			return nil, err
-		}
-	}
-	
-	return results[0].Interface(), nil
-}
-
-// prepareBasicFunctionArgs prepares arguments for basic functions
-func prepareBasicFunctionArgs(funcName string, args []any, fnType reflect.Type) ([]reflect.Value, error) {
-	numIn := fnType.NumIn()
-	callArgs := make([]reflect.Value, numIn)
-	
-	for i := 0; i < numIn && i < len(args); i++ {
-		argType := fnType.In(i)
-		arg := args[i]
-		
-		argValue := reflect.ValueOf(arg)
-		if argValue.Type().ConvertibleTo(argType) {
-			callArgs[i] = argValue.Convert(argType)
-		} else {
-			callArgs[i] = argValue
-		}
-	}
-	
-	// Fill remaining args with zero values
-	for i := len(args); i < numIn; i++ {
-		callArgs[i] = reflect.Zero(fnType.In(i))
-	}
-	
-	return callArgs, nil
-}
-
-// prepareDataFunctionArgs prepares arguments for data functions
-func prepareDataFunctionArgs(funcName string, args []any, fnType reflect.Type, data Dict, missingKeys *[]string) ([]reflect.Value, error) {
-	numIn := fnType.NumIn()
-	callArgs := make([]reflect.Value, numIn)
-	
-	// Fill function-specific args
-	argIndex := 0
-	for i := 0; i < numIn-2 && argIndex < len(args); i++ {
-		argType := fnType.In(i)
-		arg := args[argIndex]
-		
-		argValue := reflect.ValueOf(arg)
-		if argValue.Type().ConvertibleTo(argType) {
-			callArgs[i] = argValue.Convert(argType)
-		} else {
-			callArgs[i] = argValue
-		}
-		argIndex++
-	}
-	
-	// Fill remaining function args with zero values
-	for i := argIndex; i < numIn-2; i++ {
-		callArgs[i] = reflect.Zero(fnType.In(i))
-	}
-	
-	// Add data and missingKeys at the end
-	if numIn >= 2 {
-		callArgs[numIn-2] = reflect.ValueOf(data)
-		callArgs[numIn-1] = reflect.ValueOf(missingKeys)
-	}
-	
-	return callArgs, nil
-}
-
-// getAvailableKeys returns available keys from data for error reporting
-func getAvailableKeys(data Dict) []string {
+func getKeys(data map[string]any) []string {
 	keys := make([]string, 0, len(data))
 	for key := range data {
 		keys = append(keys, key)
@@ -550,15 +596,969 @@ func getAvailableKeys(data Dict) []string {
 	return keys
 }
 
-// deduplicateMissingKeys removes duplicate keys from the missing keys list
-func deduplicateMissingKeys(keys []string) []string {
-	seen := make(map[string]bool)
-	result := make([]string, 0, len(keys))
+// Combined function map for templates
+var funcMap = template.FuncMap{}
+var funcsThatNeedData = []string{}
+
+func init() {
+	// Initialize the combined funcMap
+	for name, fn := range basicFuncMap {
+		funcMap[name] = fn
+	}
+	for name, fn := range dataFuncMap {
+		funcMap[name] = fn
+		funcsThatNeedData = append(funcsThatNeedData, name)
+	}
+}
+
+// HydrateString hydrates a string with the given state parameters
+func HydrateString(s string, stateParameters *map[string]any, parameterHydrationBehaviour ...*map[string]any) (string, error) {
+	var behaviour *map[string]any
+	if len(parameterHydrationBehaviour) > 0 {
+		behaviour = parameterHydrationBehaviour[0]
+	}
+
+	value, err := Hydrate(s, stateParameters, behaviour)
+	if err != nil {
+		return "", err
+	}
+
+	strValue, ok := value.(string)
+	if !ok {
+		// always cast to string
+		return fmt.Sprintf("%v", value), nil
+		// return "", fmt.Errorf("expected string, got %T", value)
+	}
+
+	return strValue, nil
+}
+
+// Adds additional processing for custom functions in Go templates.
+// This ensures that variable arguments like "resource_id" get the actual value
+// instead of being passed as literal strings.
+func addCustomTemplateHelpers(t *template.Template, data map[string]any) *template.Template {
+	customFuncMap := template.FuncMap{
+		// Create a wrapper around addkeytoall that handles variable references
+		"addkeytoall": func(listKey string, key string, valueArg any) any {
+			// Handle when valueArg is a string that should be a variable name
+			if valueStr, ok := valueArg.(string); ok && !strings.HasPrefix(valueStr, "\"") && !strings.HasPrefix(valueStr, "'") {
+				// Check if this is intended to be a variable reference
+				if val, exists := data[valueStr]; exists {
+					// It's a variable reference, use the actual value
+					return addkeytoall(listKey, key, val, data, &[]string{})
+				} else if strings.Contains(valueStr, ".") {
+					// It might be a nested variable reference like "foo.bar"
+					parts := strings.Split(valueStr, ".")
+					var current any = data
+					var found bool = true
+
+					// Navigate through the nested parts
+					for _, part := range parts {
+						if dictData, ok := current.(map[string]any); ok {
+							if val, exists := dictData[part]; exists {
+								current = val
+							} else {
+								found = false
+								break
+							}
+						} else if mapData, ok := current.(map[string]any); ok {
+							if val, exists := mapData[part]; exists {
+								current = val
+							} else {
+								found = false
+								break
+							}
+						} else {
+							found = false
+							break
+						}
+					}
+
+					if found {
+						// We found the nested value, use it
+						return addkeytoall(listKey, key, current, data, &[]string{})
+					}
+				}
+			}
+
+			// Default case: just pass the value as is
+			return addkeytoall(listKey, key, valueArg, data, &[]string{})
+		},
+	}
+
+	// Add our custom functions to the template
+	return t.Funcs(customFuncMap)
+}
+
+func getKeyStrings(keys []Key) []string {
+	res := make([]string, 0, len(keys))
 	for _, key := range keys {
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, key)
+		res = append(res, key.Key)
+	}
+	return res
+}
+
+func hydrateString(userTemplate string, data *map[string]any) (any, error) {
+	if data == nil {
+		data = &map[string]any{}
+	}
+	var missingKeys []string
+
+	// Check if the entire string is a single template variable
+	if keys := findTemplateKeysToHydrate(userTemplate, wholeVarRegex, nil); len(keys) == 1 {
+		key := keys[0]
+		if value, err := processSingleVariable(key, *data, &missingKeys); err == nil {
+			return value, nil
+		} else if err != nil {
+			// If this is an optional key and it's missing, return nil
+			if key.IsOptional {
+				return nil, nil
+			}
+			return nil, err
+		}
+
+		if key.IsOptional {
+			return nil, nil
+		}
+
+		return nil, &InfoNeededError{
+			MissingKeys:   getKeyStrings(keys),
+			AvailableKeys: getKeys(*data),
+			Err:           fmt.Errorf("missing keys in template"),
 		}
 	}
-	return result
+
+	// Or if the entire string is a function
+	if keys := findTemplateKeysToHydrate(userTemplate, wholeFuncRegex, nil); len(keys) == 1 {
+		key := keys[0]
+
+		// Try to process as a single function call (optimization path)
+		if value, err := processSingleFunction(key.Key, *data, &missingKeys); err == nil {
+			return value, nil
+		}
+		// Single function processing failed, falling back to full template parsing
+		// This is normal for complex nested function calls
+	}
+
+	// Find all template keys before processing
+	allKeys := FindTemplateKeysToHydrate(userTemplate, true, nil)
+
+	// Pre-process the template to handle optional parameters
+	// Replace optional parameters that are missing with empty strings in the template
+	preprocessedTemplate := userTemplate
+	for _, key := range allKeys {
+		if key.IsOptional {
+			// Check if the parameter exists in data
+			value := get(key.Key, *data, &[]string{})
+			if value == nil {
+				// Replace the optional parameter with empty string using string replacement
+				optPattern := fmt.Sprintf("{{%s?}}", key.Key)
+				preprocessedTemplate = strings.ReplaceAll(preprocessedTemplate, optPattern, "")
+			}
+		}
+	}
+
+	// Parse the user template and convert it to use our custom get function
+	parsedTemplate, err := parseTemplate(preprocessedTemplate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a custom template with our functions
+	var t = template.New("custom").Funcs(funcMap)
+
+	// Add custom helpers for variable processing
+	t = addCustomTemplateHelpers(t, *data)
+
+	// Set option to error on missing keys
+	t.Option("missingkey=error")
+
+	// Parse the modified template
+	t, err = t.Parse(parsedTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing template: %w", err)
+	}
+
+	keyDefinitions := KeyDefinitions{}
+	// Only include non-optional keys or optional keys that exist in data
+	for _, key := range allKeys {
+		if !key.IsOptional || get(key.Key, *data, &[]string{}) != nil {
+			keyDefinitions[key.Key] = key
+		}
+	}
+
+	// Execute the template
+	var result bytes.Buffer
+	err = t.Execute(&result, struct {
+		Data           map[string]any
+		MissingKeys    *[]string
+		KeyDefinitions KeyDefinitions
+	}{Data: *data, MissingKeys: &missingKeys, KeyDefinitions: keyDefinitions})
+
+	// Check for missing key errors
+	if err != nil {
+		// Only log actual template errors, not argument type mismatches which are expected
+		if !strings.Contains(err.Error(), "invalid value; expected int") {
+			log.Printf("template execution error: %v", err)
+		}
+
+		// Parse the error message to extract missing keys
+		errorMsg := err.Error()
+		re := regexp.MustCompile(`map has no entry for key "(.*?)"`)
+		matches := re.FindAllStringSubmatch(errorMsg, -1)
+
+		// If it's not a missing key error, return the original error
+		if len(matches) == 0 {
+			log.Printf("template error: %v", errorMsg)
+			return nil, fmt.Errorf("template error (not a missing key error): %w", err)
+		}
+		for _, match := range matches {
+			if len(match) > 1 {
+				// Check if the key is optional before adding it to missingKeys
+				key := match[1]
+				isOptional := false
+				for _, k := range allKeys {
+					if k.Key == key && k.IsOptional {
+						isOptional = true
+						break
+					}
+				}
+				if !isOptional {
+					missingKeys = append(missingKeys, key)
+				}
+			}
+		}
+	}
+
+	strResult := result.String()
+
+	// Manually handle any remaining optional parameters in the template result
+	// Replace any remaining {{key?}} patterns with empty strings
+	strResult = optionalVarRegex.ReplaceAllString(strResult, "")
+
+	// Check for missing keys from both error and get function
+	// Filter out optional keys from missingKeys
+	var requiredMissingKeys []string
+	for _, key := range missingKeys {
+		isOptional := false
+		for _, k := range allKeys {
+			if k.Key == key && k.IsOptional {
+				isOptional = true
+				break
+			}
+		}
+		if !isOptional {
+			requiredMissingKeys = append(requiredMissingKeys, key)
+		}
+	}
+
+	if len(requiredMissingKeys) > 0 {
+		// return partial result as may have some vars in a previous
+		// hydration that would be missing from the current params
+		// (e.g. a string that uses both system params and step output)
+		return strResult, &InfoNeededError{
+			MissingKeys:   requiredMissingKeys,
+			AvailableKeys: getKeys(*data),
+			Err:           fmt.Errorf("missing keys in template"),
+		}
+	}
+
+	// Special case for optional variables that were returned as template strings
+	// If the result matches the pattern {{key?}}, and key is optional, return nil
+	if optVarMatches := wholeVarRegex.FindStringSubmatch(strResult); len(optVarMatches) > 0 {
+		matchedKey := strings.TrimSpace(optVarMatches[1])
+		isOptional := strings.HasSuffix(matchedKey, "?")
+		if isOptional {
+			// It's an optional parameter that wasn't hydrated, so return nil
+			return nil, nil
+		}
+	}
+
+	// Check if the value is a number and preserve its type
+	if value, err := strconv.Atoi(strResult); err == nil {
+		return value, nil
+	}
+
+	// If there was an error but no missing keys were found, return the original error
+	if err != nil {
+		return strResult, fmt.Errorf("error executing template: %w", err)
+	}
+
+	return strResult, nil
+}
+
+func processSingleVariable(key Key, data map[string]any, missingKeys *[]string) (any, error) {
+	value := get(key.Key, data, missingKeys)
+	if value != nil {
+		return value, nil
+	}
+
+	if key.IsOptional {
+		return nil, nil
+	}
+
+	return nil, &InfoNeededError{
+		MissingKeys:   []string{key.Key},
+		AvailableKeys: getKeys(data),
+		Err:           fmt.Errorf("missing key in template"),
+	}
+}
+
+func processSingleFunction(funcCall string, data map[string]any, missingKeys *[]string) (any, error) {
+	// Handle reserved words
+	if err := validateFunctionName(funcCall); err != nil {
+		return nil, err
+	}
+
+	// Handle nested function calls
+	if result, handled, err := processNestedFunction(funcCall, data, missingKeys); handled {
+		return result, err
+	}
+
+	// Parse regular function call
+	funcName, processedArgs, err := parseFunctionCall(funcCall, data, missingKeys)
+	if err != nil {
+		return nil, err
+	}
+
+	// Execute the function
+	return executeFunctionCall(funcName, processedArgs, data, missingKeys)
+}
+
+// validateFunctionName checks if the function call starts with a reserved word
+func validateFunctionName(funcCall string) error {
+	for _, reserved := range reservedWords {
+		if strings.HasPrefix(funcCall, reserved+" ") {
+			return fmt.Errorf("reserved word used as function: %s", reserved)
+		}
+	}
+	return nil
+}
+
+// processNestedFunction handles nested function calls like "toJSON (mapToDict ...)"
+func processNestedFunction(funcCall string, data map[string]any, missingKeys *[]string) (any, bool, error) {
+	if !strings.Contains(funcCall, "(") || !strings.Contains(funcCall, ")") {
+		return nil, false, nil // Not a nested function
+	}
+
+	parts := strings.SplitN(funcCall, " ", 2)
+	if len(parts) != 2 {
+		return nil, true, fmt.Errorf("invalid function call format: %s", funcCall)
+	}
+
+	outerFunc := parts[0]
+	innerCall := strings.TrimSpace(parts[1])
+
+	if !strings.HasPrefix(innerCall, "(") || !strings.HasSuffix(innerCall, ")") {
+		return nil, false, nil // Not the expected nested format
+	}
+
+	// Extract and process inner function
+	innerFunc := innerCall[1 : len(innerCall)-1]
+	innerResult, err := processSingleFunction(innerFunc, data, missingKeys)
+	if err != nil {
+		return nil, true, err
+	}
+
+	// Execute outer function with inner result
+	fn, ok := funcMap[outerFunc]
+	if !ok {
+		return nil, true, fmt.Errorf("unknown function: %s", outerFunc)
+	}
+
+	fnValue := reflect.ValueOf(fn)
+	fnType := fnValue.Type()
+
+	if fnType.NumIn() == 1 {
+		callArgs := []reflect.Value{reflect.ValueOf(innerResult)}
+		results := fnValue.Call(callArgs)
+		return processResults(results), true, nil
+	}
+
+	return nil, true, fmt.Errorf("unsupported function signature for nested call: %s", outerFunc)
+}
+
+// parseQuotedFields parses a string into fields, respecting quoted strings (both single and double quotes)
+func parseQuotedFields(s string) []string {
+	var fields []string
+	var current strings.Builder
+	inQuotes := false
+	quoteChar := byte(0)
+
+	for i := 0; i < len(s); i++ {
+		ch := s[i]
+
+		if !inQuotes {
+			if ch == '"' || ch == '\'' {
+				inQuotes = true
+				quoteChar = ch
+				current.WriteByte(ch)
+			} else if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+				// Whitespace outside quotes - end current field
+				if current.Len() > 0 {
+					fields = append(fields, current.String())
+					current.Reset()
+				}
+			} else {
+				current.WriteByte(ch)
+			}
+		} else {
+			// Inside quotes
+			current.WriteByte(ch)
+			if ch == quoteChar {
+				inQuotes = false
+				quoteChar = 0
+			}
+		}
+	}
+
+	// Add final field if any
+	if current.Len() > 0 {
+		fields = append(fields, current.String())
+	}
+
+	return fields
+}
+
+// parseFunctionCall parses a function call string and returns the function name and processed arguments
+func parseFunctionCall(funcCall string, data map[string]any, missingKeys *[]string) (string, []any, error) {
+	parts := parseQuotedFields(funcCall)
+	if len(parts) == 0 {
+		return "", nil, fmt.Errorf("empty function call")
+	}
+
+	funcName := parts[0]
+	if slices.Contains(reservedWords, funcName) {
+		return "", nil, fmt.Errorf("unknown function: %s", funcName)
+	}
+
+	args := parts[1:]
+	processedArgs := make([]any, len(args))
+
+	for i, arg := range args {
+		processedArgs[i] = processArgument(arg, data, missingKeys)
+	}
+
+	return funcName, processedArgs, nil
+}
+
+// interpretEscapeSequences converts common escape sequences to their actual characters
+func interpretEscapeSequences(s string) string {
+	// Handle common escape sequences
+	s = strings.ReplaceAll(s, "\\n", "\n")
+	s = strings.ReplaceAll(s, "\\t", "\t")
+	s = strings.ReplaceAll(s, "\\r", "\r")
+	s = strings.ReplaceAll(s, "\\\"", "\"")
+	s = strings.ReplaceAll(s, "\\'", "'")
+	s = strings.ReplaceAll(s, "\\\\", "\\")
+	return s
+}
+
+// processArgument processes a single function argument, handling data references and quote stripping
+func processArgument(arg string, data map[string]any, missingKeys *[]string) any {
+	if strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"") {
+		// Remove quotes and interpret escape sequences
+		unquoted := strings.Trim(arg, "\"")
+		return interpretEscapeSequences(unquoted)
+	}
+
+	clean := strings.Trim(arg, "\"'")
+
+	// Handle data references
+	if strings.HasPrefix(clean, "$.Data.") || strings.HasPrefix(clean, ".Data.") {
+		var path string
+		if strings.HasPrefix(clean, "$.Data.") {
+			path = strings.TrimPrefix(clean, "$.Data.")
+		} else {
+			path = strings.TrimPrefix(clean, ".Data.")
+		}
+		return get(path, data, missingKeys)
+	}
+
+	return clean
+}
+
+// executeFunctionCall executes a function with the given arguments
+func executeFunctionCall(funcName string, processedArgs []any, data map[string]any, missingKeys *[]string) (any, error) {
+	fn, ok := funcMap[funcName]
+	if !ok {
+		return nil, fmt.Errorf("unknown function: %s", funcName)
+	}
+
+	_, isBasicFunction := basicFuncMap[funcName]
+	fnValue := reflect.ValueOf(fn)
+	fnType := fnValue.Type()
+
+	var callArgs []reflect.Value
+	var err error
+
+	if isBasicFunction {
+		callArgs, err = prepareBasicFunctionArgs(funcName, processedArgs, fnType)
+	} else {
+		callArgs, err = prepareDataFunctionArgs(funcName, processedArgs, fnType, data, missingKeys)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	results := fnValue.Call(callArgs)
+	return processResults(results), nil
+}
+
+// prepareBasicFunctionArgs prepares arguments for basic functions (no data/missingKeys needed)
+func prepareBasicFunctionArgs(funcName string, processedArgs []any, fnType reflect.Type) ([]reflect.Value, error) {
+	expectedArgCount := len(processedArgs)
+	if fnType.NumIn() != expectedArgCount {
+		return nil, fmt.Errorf("incorrect number of arguments for function %s: expected %d, got %d", funcName, fnType.NumIn(), len(processedArgs))
+	}
+
+	callArgs := make([]reflect.Value, fnType.NumIn())
+	for i := 0; i < len(processedArgs); i++ {
+		arg, err := convertArgument(processedArgs[i], fnType.In(i), i)
+		if err != nil {
+			return nil, err
+		}
+		callArgs[i] = arg
+	}
+
+	return callArgs, nil
+}
+
+// prepareDataFunctionArgs prepares arguments for data functions (need data/missingKeys)
+func prepareDataFunctionArgs(funcName string, processedArgs []any, fnType reflect.Type, data map[string]any, missingKeys *[]string) ([]reflect.Value, error) {
+	expectedArgCount := len(processedArgs) + 2 // +2 for data and missingKeys
+	if fnType.NumIn() < 2 {
+		return nil, fmt.Errorf("function %s must have data and missingKeys parameters", funcName)
+	}
+
+	if fnType.NumIn() != expectedArgCount {
+		return nil, fmt.Errorf("incorrect number of arguments for function %s: expected %d, got %d", funcName, fnType.NumIn()-2, len(processedArgs))
+	}
+
+	callArgs := make([]reflect.Value, fnType.NumIn())
+	for i := 0; i < len(processedArgs); i++ {
+		arg, err := convertArgument(processedArgs[i], fnType.In(i), i)
+		if err != nil {
+			return nil, err
+		}
+		callArgs[i] = arg
+	}
+
+	callArgs[len(processedArgs)] = reflect.ValueOf(data)
+	callArgs[len(processedArgs)+1] = reflect.ValueOf(missingKeys)
+
+	return callArgs, nil
+}
+
+// convertArgument converts a processed argument to the expected type using reflection
+func convertArgument(paramValue any, paramType reflect.Type, argIndex int) (reflect.Value, error) {
+	switch paramType.Kind() {
+	case reflect.String:
+		if strVal, ok := paramValue.(string); ok {
+			return reflect.ValueOf(strVal), nil
+		}
+		return reflect.ValueOf(fmt.Sprintf("%v", paramValue)), nil
+
+	case reflect.Int:
+		intVal, err := convertToInt(paramValue)
+		if err != nil {
+			return reflect.Value{}, fmt.Errorf("error converting argument %d to int: %w", argIndex, err)
+		}
+		return reflect.ValueOf(intVal), nil
+
+	case reflect.Interface:
+		return reflect.ValueOf(paramValue), nil
+
+	default:
+		return reflect.Value{}, fmt.Errorf("unsupported argument type for argument %d: %v", argIndex, paramType.Kind())
+	}
+}
+
+// convertToInt converts various types to int
+func convertToInt(value any) (int, error) {
+	switch v := value.(type) {
+	case int:
+		return v, nil
+	case float64:
+		return int(v), nil
+	case string:
+		return strconv.Atoi(v)
+	default:
+		return 0, fmt.Errorf("cannot convert type %T to int", value)
+	}
+}
+
+// processResults processes the results from a function call
+func processResults(results []reflect.Value) any {
+	if len(results) == 0 {
+		return nil
+	}
+
+	if len(results) == 2 && !results[1].IsNil() {
+		// If there's an error in the second result, we should handle it in the caller
+		// For now, just return the first result
+		return results[0].Interface()
+	}
+
+	return results[0].Interface()
+}
+
+func hydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBehaviour *map[string]any) (map[string]any, error) {
+	var typedDict map[string]any
+
+	switch d := dict.(type) {
+	case map[string]any:
+		typedDict = d
+	default:
+		return nil, fmt.Errorf("expected map[string]any or map[string]any, got %T", dict)
+	}
+
+	if stateParameters == nil {
+		return typedDict, nil
+	}
+
+	result := make(map[string]any)
+	var missingKeys []string
+
+	// First process all values that need hydration
+	for key, value := range typedDict {
+		// Check if this specific field should be hydrated
+		shouldHydrate, childBehaviour := shouldHydrateField(key, parameterHydrationBehaviour)
+
+		if !shouldHydrate {
+			// If not hydrating, just copy the original value
+			result[key] = value
+			continue
+		}
+
+		// For values that need hydration, process them
+		hydratedValue, err := Hydrate(value, stateParameters, childBehaviour)
+
+		// Handle string values that might contain unhydrated optional templates
+		if strValue, ok := hydratedValue.(string); ok {
+			if optVarMatches := wholeVarRegex.FindStringSubmatch(strValue); len(optVarMatches) > 0 {
+				matchedKey := strings.TrimSpace(optVarMatches[1])
+				isOptional := strings.HasSuffix(matchedKey, "?")
+				if isOptional {
+					// It's an optional parameter that wasn't hydrated, we should return nil
+					result[key] = nil
+					continue
+				}
+			}
+		}
+
+		// Check for optional string patterns in the original value
+		if hydratedValue == nil && err == nil {
+			if strOriginal, ok := value.(string); ok {
+				if optVarMatches := wholeVarRegex.FindStringSubmatch(strOriginal); len(optVarMatches) > 0 {
+					matchedKey := strings.TrimSpace(optVarMatches[1])
+					isOptional := strings.HasSuffix(matchedKey, "?")
+					if isOptional {
+						// It's an optional parameter, set to nil explicitly
+						result[key] = nil
+						continue
+					}
+				}
+			}
+		}
+
+		// Check for other nil values
+		if hydratedValue == nil && err == nil {
+			// It's an optional parameter that returned nil, keep it as nil
+			result[key] = nil
+			continue
+		}
+
+		// For all other cases, store the hydrated value if not nil
+		if hydratedValue != nil {
+			result[key] = hydratedValue
+		} else {
+			// Default - use original value if hydrated is nil but there was an error
+			result[key] = value
+		}
+
+		if err != nil {
+			var infoNeededErr *InfoNeededError
+			if errors.As(err, &infoNeededErr) {
+				missingKeys = append(missingKeys, infoNeededErr.MissingKeys...)
+				continue
+			}
+
+			return nil, fmt.Errorf("error hydrating key '%s': %w", key, err)
+		}
+	}
+
+	if len(missingKeys) > 0 {
+		return result, &InfoNeededError{
+			MissingKeys:   missingKeys,
+			AvailableKeys: getKeys(*stateParameters),
+			Err:           fmt.Errorf("missing keys in dict"),
+		}
+	}
+
+	return result, nil
+}
+
+func hydrateSlice(slice []any, stateParameters *map[string]any, parameterHydrationBehaviour *map[string]any) ([]any, error) {
+	if stateParameters == nil {
+		return slice, nil
+	}
+
+	result := make([]any, len(slice))
+	var missingKeys []string
+
+	// Process each slice element
+	for i, v := range slice {
+		// Hydrate the value
+		// We pass down the same behaviour for each element in the slice
+		hydratedValue, err := Hydrate(v, stateParameters, parameterHydrationBehaviour)
+
+		// Handle string values that might contain unhydrated optional templates
+		if strValue, ok := hydratedValue.(string); ok {
+			if optVarMatches := wholeVarRegex.FindStringSubmatch(strValue); len(optVarMatches) > 0 {
+				matchedKey := strings.TrimSpace(optVarMatches[1])
+				isOptional := strings.HasSuffix(matchedKey, "?")
+				if isOptional {
+					// It's an optional parameter that wasn't hydrated, we should return nil
+					result[i] = nil
+					continue
+				}
+			}
+		}
+
+		// Check for optional string patterns in the original value
+		if hydratedValue == nil && err == nil {
+			if strOriginal, ok := v.(string); ok {
+				if optVarMatches := wholeVarRegex.FindStringSubmatch(strOriginal); len(optVarMatches) > 0 {
+					matchedKey := strings.TrimSpace(optVarMatches[1])
+					isOptional := strings.HasSuffix(matchedKey, "?")
+					if isOptional {
+						// It's an optional parameter, set to nil explicitly
+						result[i] = nil
+						continue
+					}
+				}
+			}
+		}
+
+		// Check for other nil values
+		if hydratedValue == nil && err == nil {
+			// It's an optional parameter that returned nil, keep it as nil
+			result[i] = nil
+			continue
+		}
+
+		// Set the hydrated value or original if error occurred
+		if hydratedValue != nil {
+			result[i] = hydratedValue
+		} else {
+			result[i] = v
+		}
+
+		// Handle errors
+		if err != nil {
+			var infoNeededErr *InfoNeededError
+			if errors.As(err, &infoNeededErr) {
+				missingKeys = append(missingKeys, infoNeededErr.MissingKeys...)
+			} else {
+				return nil, fmt.Errorf("error hydrating slice index %d: %w", i, err)
+			}
+		}
+	}
+
+	if len(missingKeys) > 0 {
+		return result, &InfoNeededError{
+			MissingKeys:   missingKeys,
+			AvailableKeys: getKeys(*stateParameters),
+			Err:           fmt.Errorf("missing keys in slice"),
+		}
+	}
+
+	return result, nil
+}
+
+// Public API helper methods - these use Hydrate but then case back to the original type,
+// as Hydrate contains parameter pre-processing that we want to do for all
+// hydrations (deep copy the params etc so they're not modified by the template),
+// so can't export hydrateString etc. above directly
+func HydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBehaviour ...*map[string]any) (map[string]any, error) {
+	var behaviour *map[string]any
+	if len(parameterHydrationBehaviour) > 0 {
+		behaviour = parameterHydrationBehaviour[0]
+	}
+
+	value, err := Hydrate(dict, stateParameters, behaviour)
+	if err != nil {
+		return nil, err
+	}
+
+	typedDict, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected map[string]any, got %T", value)
+	}
+
+	return typedDict, nil
+}
+
+func HydrateSlice(slice []any, stateParameters *map[string]any, parameterHydrationBehaviour ...*map[string]any) ([]any, error) {
+	var behaviour *map[string]any
+	if len(parameterHydrationBehaviour) > 0 {
+		behaviour = parameterHydrationBehaviour[0]
+	}
+
+	value, err := Hydrate(slice, stateParameters, behaviour)
+	if err != nil {
+		return nil, err
+	}
+
+	typedSlice, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected []any, got %T", value)
+	}
+
+	return typedSlice, nil
+}
+
+func Get(key string, data map[string]any, missingKeys *[]string) any {
+	if missingKeys == nil {
+		missingKeys = &[]string{}
+	}
+	value := get(key, data, missingKeys)
+	if value == nil {
+		return nil
+	}
+	return value
+}
+
+func Set(data map[string]any, key string, value any) (map[string]any, error) {
+	if data == nil {
+		return nil, fmt.Errorf("data is nil")
+	}
+
+	parts := strings.FieldsFunc(key, func(r rune) bool {
+		return r == '.' || r == '[' || r == ']'
+	})
+
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("invalid key: %s", key)
+	}
+
+	// Deep copy data to avoid modifying the original
+	copiedData, err := utils.JSONToDict(utils.JSON(data))
+	if err != nil {
+		return nil, fmt.Errorf("error copying data: %w", err)
+	}
+
+	result, err := setRecursive(copiedData, parts, value)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.(map[string]any), nil
+}
+
+func setRecursive(current any, parts []string, value any) (any, error) {
+	if len(parts) == 0 {
+		return value, nil
+	}
+
+	// Convert map[string]any to map[string]any for consistent handling
+	if mapValue, ok := current.(map[string]any); ok {
+		current = map[string]any(mapValue)
+	}
+
+	switch m := current.(type) {
+	case map[string]any:
+		if len(parts) == 1 {
+			m[parts[0]] = value
+			return m, nil
+		}
+
+		var next any
+		var exists bool
+
+		// Check if the next part exists
+		if next, exists = m[parts[0]]; !exists {
+			// Create missing nested objects as we go
+			next = map[string]any{}
+			m[parts[0]] = next
+		}
+
+		updated, err := setRecursive(next, parts[1:], value)
+		if err != nil {
+			return nil, err
+		}
+		m[parts[0]] = updated
+		return m, nil
+
+	case []any:
+		index, err := strconv.Atoi(parts[0])
+		if err != nil || index < 0 || index >= len(m) {
+			return nil, fmt.Errorf("invalid array index: %s", parts[0])
+		}
+		if len(parts) == 1 {
+			m[index] = value
+			return m, nil
+		}
+
+		// Get the item at the index
+		item := m[index]
+
+		// If the item doesn't exist or isn't a Dict/map, create a new one
+		if item == nil {
+			item = map[string]any{}
+			m[index] = item
+		}
+
+		updated, err := setRecursive(item, parts[1:], value)
+		if err != nil {
+			return nil, err
+		}
+		m[index] = updated
+		return m, nil
+
+	default:
+		return nil, fmt.Errorf("cannot set key %s on type %T", parts[0], current)
+	}
+}
+
+func MergeSources(sources ...map[string]any) (map[string]any, error) {
+	combinedParams := map[string]any{}
+
+	for _, source := range sources {
+		for k, v := range source {
+			combinedParams[k] = v
+		}
+	}
+
+	return combinedParams, nil
+}
+
+// isKeyOptional determines if a key is optional either by its suffix (?) or by its definition
+// in the keyDefinitions map.
+func isKeyOptional(key string, keyDefinitions KeyDefinitions) bool {
+	// Check if key has a ? suffix directly
+	if strings.HasSuffix(key, "?") {
+		return true
+	}
+
+	// Clean key for definitions lookup
+	cleanKeyStr := strings.TrimSuffix(key, "?")
+	cleanKeyStr = removeDataPrefix(cleanKeyStr)
+
+	// Then check definitions
+	if keyDefinition, ok := keyDefinitions[cleanKeyStr]; ok {
+		return keyDefinition.IsOptional
+	}
+
+	return false
+}
+
+// handleMissingKey adds a key to the missingKeys slice only if the key is not optional.
+// This is used to track which required keys are missing from the data during hydration.
+func handleMissingKey(key string, isOptional bool, missingKeys *[]string) {
+	if !isOptional {
+		*missingKeys = append(*missingKeys, key)
+	}
 }

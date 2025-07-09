@@ -1,4 +1,4 @@
-package erdotypes
+package types
 
 import (
 	"time"
@@ -49,10 +49,12 @@ type Dataset struct {
 	Parameters *map[string]interface{} `json:"parameters"`
 }
 
-// Resource represents a data resource with its dataset
-type Resource struct {
+// BotResource represents a data resource with its dataset for bot invocations
+type BotResource struct {
 	ID        int      `json:"id"` // scoped to the invocation
 	Dataset   *Dataset `json:"dataset"`
 	CreatedBy string   `json:"created_by"`
-	Extra     Dict     `json:"extra"`
+	// Any additional data that's useful but not present
+	// on the resource type
+	Extra     map[string]any     `json:"extra"`
 }

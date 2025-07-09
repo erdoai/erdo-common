@@ -1,4 +1,4 @@
-package erdotypes
+package types
 
 // ResourceType represents the type of resource
 type ResourceType string

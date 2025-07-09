@@ -1,4 +1,4 @@
-package erdotypes
+package types
 
 import (
 	"database/sql/driver"
@@ -11,19 +11,19 @@ import (
 
 // Bot represents a bot for export/import across CLI and backend
 type Bot struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	Code            string    `json:"code"`
-	FilePath        string    `json:"file_path"`
-	Persona         *string   `json:"persona"`
-	RunningMessage  *string   `json:"running_message"`
-	FinishedMessage *string   `json:"finished_message"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	OrganizationID  string    `json:"organization_id"`
-	Visibility      string    `json:"visibility"`
-	Source          string    `json:"source"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	Code            string     `json:"code"`
+	FilePath        string     `json:"file_path"`
+	Persona         *string    `json:"persona"`
+	RunningMessage  *string    `json:"running_message"`
+	FinishedMessage *string    `json:"finished_message"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
+	OrganizationID  string     `json:"organization_id"`
+	Visibility      string     `json:"visibility"`
+	Source          string     `json:"source"`
 }
 
 // Step represents a bot step for export/import across CLI and backend
@@ -47,8 +47,8 @@ type Step struct {
 	UiContentType               *string                     `json:"ui_content_type,omitempty"`
 	ParameterHydrationBehaviour ParameterHydrationBehaviour `json:"parameter_hydration_behaviour"`
 	ResultHandlerID             *string                     `json:"result_handler_id,omitempty"`
-	CreatedAt                   time.Time                   `json:"created_at"`
-	UpdatedAt                   time.Time                   `json:"updated_at"`
+	CreatedAt                   *time.Time                  `json:"created_at,omitempty"`
+	UpdatedAt                   *time.Time                  `json:"updated_at,omitempty"`
 }
 
 // Parameter Types
@@ -162,15 +162,15 @@ const (
 
 // ParameterDefinition represents a parameter definition (shared across CLI and backend)
 type ParameterDefinition struct {
-	ID          uuid.UUID     `json:"id"`
-	BotID       uuid.UUID     `json:"bot_id"`
+	ID          *uuid.UUID    `json:"id,omitempty"`
+	BotID       *uuid.UUID    `json:"bot_id,omitempty"`
 	Name        string        `json:"name"`
 	Key         string        `json:"key"`
 	Description *string       `json:"description"`
 	Type        ParameterType `json:"type"`
 	IsRequired  bool          `json:"is_required"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
+	CreatedAt   *time.Time    `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time    `json:"updated_at,omitempty"`
 	// Extended fields for agent discovery
 	ValueSources []ParameterValueSource `json:"value_sources,omitempty"`
 	Interpreters []ParameterInterpreter `json:"interpreters,omitempty"`
@@ -181,36 +181,36 @@ type ParameterValueSourceType string
 
 // ParameterValueSource represents a source for parameter values
 type ParameterValueSource struct {
-	ID                    uuid.UUID                `json:"id"`
-	ParameterDefinitionID uuid.UUID                `json:"parameter_definition_id"`
+	ID                    *uuid.UUID               `json:"id,omitempty"`
+	ParameterDefinitionID *uuid.UUID               `json:"parameter_definition_id,omitempty"`
 	Type                  ParameterValueSourceType `json:"type"`
 	Parameters            map[string]any           `json:"parameters"`
-	CreatedAt             time.Time                `json:"created_at"`
-	UpdatedAt             time.Time                `json:"updated_at"`
+	CreatedAt             *time.Time               `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time               `json:"updated_at,omitempty"`
 	// Extended fields for agent discovery
 	OnPopulate []ParameterValueSourceHandler `json:"on_populate,omitempty"`
 }
 
 // ParameterValueSourceHandler represents a handler for parameter value source events
 type ParameterValueSourceHandler struct {
-	ID                     uuid.UUID      `json:"id"`
-	ParameterValueSourceID uuid.UUID      `json:"parameter_value_source_id"`
+	ID                     *uuid.UUID     `json:"id,omitempty"`
+	ParameterValueSourceID *uuid.UUID     `json:"parameter_value_source_id,omitempty"`
 	ActionType             string         `json:"action_type"`
 	Parameters             map[string]any `json:"parameters"`
 	ExecutionMode          string         `json:"execution_mode"`
-	CreatedAt              time.Time      `json:"created_at"`
-	UpdatedAt              time.Time      `json:"updated_at"`
+	CreatedAt              *time.Time     `json:"created_at,omitempty"`
+	UpdatedAt              *time.Time     `json:"updated_at,omitempty"`
 }
 
 // ParameterInterpreter represents a parameter interpreter
 type ParameterInterpreter struct {
-	ID                    uuid.UUID      `json:"id"`
-	ParameterDefinitionID uuid.UUID      `json:"parameter_definition_id"`
+	ID                    *uuid.UUID     `json:"id,omitempty"`
+	ParameterDefinitionID *uuid.UUID     `json:"parameter_definition_id,omitempty"`
 	ActionType            string         `json:"action_type"`
 	Parameters            map[string]any `json:"parameters"`
 	InterpreterOrder      int32          `json:"interpreter_order"`
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
+	CreatedAt             *time.Time     `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time     `json:"updated_at,omitempty"`
 }
 
 // Agent Discovery Types (for CLI introspection)
@@ -306,7 +306,6 @@ type UpsertBotRequest struct {
 	Source               string                   `json:"source"`
 	ParameterDefinitions []APIParameterDefinition `json:"parameter_definitions,omitempty"`
 }
-
 
 // Response Types
 // ==============
@@ -438,6 +437,42 @@ type ConditionDefinition struct {
 	Leaf       map[string]any        `json:"leaf,omitempty"`
 }
 
+// UnmarshalJSON handles both array and object formats for nested conditions
+func (cd *ConditionDefinition) UnmarshalJSON(data []byte) error {
+	// Use a temporary struct to avoid recursion
+	type TempCondition struct {
+		Type       string          `json:"type"`
+		Conditions json.RawMessage `json:"conditions,omitempty"`
+		Leaf       map[string]any  `json:"leaf,omitempty"`
+	}
+
+	var temp TempCondition
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	cd.Type = temp.Type
+	cd.Leaf = temp.Leaf
+
+	// Handle conditions field
+	if temp.Conditions != nil && len(temp.Conditions) > 0 {
+		// First check if it's an array
+		var conditionsArray []ConditionDefinition
+		if err := json.Unmarshal(temp.Conditions, &conditionsArray); err == nil {
+			cd.Conditions = conditionsArray
+		} else {
+			// If not an array, try parsing as a single object and wrap in array
+			var singleCondition ConditionDefinition
+			if err := json.Unmarshal(temp.Conditions, &singleCondition); err != nil {
+				return fmt.Errorf("conditions field must be either an array or object, got invalid JSON: %s", string(temp.Conditions))
+			}
+			cd.Conditions = []ConditionDefinition{singleCondition}
+		}
+	}
+
+	return nil
+}
+
 // Scan implements sql.Scanner interface for ConditionDefinition
 func (cd *ConditionDefinition) Scan(value interface{}) error {
 	if value == nil {
@@ -524,15 +559,12 @@ type Tool struct {
 // Result Types (for actions and step execution)
 // =============================================
 
-// Dict represents a dictionary/map type for JSON data
-type Dict = map[string]any
-
 // Message represents a message in the conversation
 type Message struct {
-	ID        string    `json:"id"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 
 // SystemParameters represents system-provided parameters available to agents
@@ -620,11 +652,11 @@ const (
 
 // Result of an action or invocation operation - gathering params, running a handler, a step etc
 type Result struct {
-	Status     Status  `json:"status"`
-	Parameters *Dict   `json:"parameters"` // input parameters
-	Output     *Dict   `json:"output"`
-	Message    *string `json:"message"`
-	Error      *Error  `json:"error"`
+	Status     Status          `json:"status"`
+	Parameters *map[string]any `json:"parameters"` // input parameters
+	Output     *map[string]any `json:"output"`
+	Message    *string         `json:"message"`
+	Error      *Error          `json:"error"`
 }
 
 // API Types (Encore-compatible versions without interface{})
@@ -651,41 +683,41 @@ type APIStep struct {
 	UiContentType               *string                     `json:"ui_content_type,omitempty"`
 	ParameterHydrationBehaviour ParameterHydrationBehaviour `json:"parameter_hydration_behaviour"`
 	ResultHandlerID             *string                     `json:"result_handler_id,omitempty"`
-	CreatedAt                   time.Time                   `json:"created_at"`
-	UpdatedAt                   time.Time                   `json:"updated_at"`
+	CreatedAt                   *time.Time                  `json:"created_at,omitempty"`
+	UpdatedAt                   *time.Time                  `json:"updated_at,omitempty"`
 }
 
 // APIParameterValueSource is an Encore-API-compatible version of ParameterValueSource
 type APIParameterValueSource struct {
-	ID                    uuid.UUID                        `json:"id"`
-	ParameterDefinitionID uuid.UUID                        `json:"parameter_definition_id"`
+	ID                    *uuid.UUID                       `json:"id,omitempty"`
+	ParameterDefinitionID *uuid.UUID                       `json:"parameter_definition_id,omitempty"`
 	Type                  ParameterValueSourceType         `json:"type"`
 	Parameters            json.RawMessage                  `json:"parameters"` // JSON string instead of interface{}
-	CreatedAt             time.Time                        `json:"created_at"`
-	UpdatedAt             time.Time                        `json:"updated_at"`
+	CreatedAt             *time.Time                       `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time                       `json:"updated_at,omitempty"`
 	OnPopulate            []APIParameterValueSourceHandler `json:"on_populate,omitempty"`
 }
 
 // APIParameterValueSourceHandler is an Encore-API-compatible version of ParameterValueSourceHandler
 type APIParameterValueSourceHandler struct {
-	ID                     uuid.UUID        `json:"id"`
-	ParameterValueSourceID uuid.UUID        `json:"parameter_value_source_id"`
+	ID                     *uuid.UUID       `json:"id,omitempty"`
+	ParameterValueSourceID *uuid.UUID       `json:"parameter_value_source_id,omitempty"`
 	ActionType             string           `json:"action_type"`
 	Parameters             json.RawMessage  `json:"parameters"`
 	ExecutionMode          APIExecutionMode `json:"execution_mode"`
-	CreatedAt              time.Time        `json:"created_at"`
-	UpdatedAt              time.Time        `json:"updated_at"`
+	CreatedAt              *time.Time       `json:"created_at,omitempty"`
+	UpdatedAt              *time.Time       `json:"updated_at,omitempty"`
 }
 
 // APIParameterInterpreter is an Encore-API-compatible version of ParameterInterpreter
 type APIParameterInterpreter struct {
-	ID                    uuid.UUID       `json:"id"`
-	ParameterDefinitionID uuid.UUID       `json:"parameter_definition_id"`
+	ID                    *uuid.UUID      `json:"id,omitempty"`
+	ParameterDefinitionID *uuid.UUID      `json:"parameter_definition_id,omitempty"`
 	ActionType            string          `json:"action_type"`
 	Parameters            json.RawMessage `json:"parameters"`
 	InterpreterOrder      int32           `json:"interpreter_order"`
-	CreatedAt             time.Time       `json:"created_at"`
-	UpdatedAt             time.Time       `json:"updated_at"`
+	CreatedAt             *time.Time      `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time      `json:"updated_at,omitempty"`
 }
 
 // APIExecutionMode is an Encore-API-compatible version of ExecutionMode
@@ -728,15 +760,15 @@ type APIResultHandler struct {
 
 // APIParameterDefinition is an Encore-API-compatible version of ParameterDefinition
 type APIParameterDefinition struct {
-	ID          uuid.UUID `json:"id"`
-	BotID       uuid.UUID `json:"bot_id"`
-	Name        string    `json:"name"`
-	Key         string    `json:"key"`
-	Description *string   `json:"description"`
-	Type        string    `json:"type"`
-	IsRequired  bool      `json:"is_required"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          *uuid.UUID `json:"id,omitempty"`
+	BotID       *uuid.UUID `json:"bot_id,omitempty"`
+	Name        string     `json:"name"`
+	Key         string     `json:"key"`
+	Description *string    `json:"description"`
+	Type        string     `json:"type"`
+	IsRequired  bool       `json:"is_required"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
 // APIStepWithHandlers is an Encore-API-compatible version of StepWithHandlers

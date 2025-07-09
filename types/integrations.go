@@ -1,4 +1,4 @@
-package erdotypes
+package types
 
 import (
 	"time"

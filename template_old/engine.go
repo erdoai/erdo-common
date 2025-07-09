@@ -9,9 +9,6 @@ import (
 	json "github.com/goccy/go-json"
 )
 
-// Common types that were previously in backend/types
-type Dict map[string]any
-
 // JSON marshals any value to JSON
 func ToJSON(v any) (string, error) {
 	b, err := json.Marshal(v)
@@ -22,8 +19,8 @@ func ToJSON(v any) (string, error) {
 }
 
 // JSONToDict converts JSON string to Dict
-func JSONToDict(jsonStr string) (Dict, error) {
-	var result Dict
+func JSONToDict(jsonStr string) (map[string]any, error) {
+	var result map[string]any
 	err := json.Unmarshal([]byte(jsonStr), &result)
 	return result, err
 }
@@ -52,7 +49,7 @@ func (e *InfoNeededError) Unwrap() error {
 
 // Template regex patterns
 var varRegexStr = `(?:{{|%\()\s*([^\s.$][^\s]*?(?:\.[^\s]+?)*)\s*(?:}}|\)s)`
-var funcRegexStr = `{{([^}]+)}}`
+var funcRegexStr = `{{([^-}][^}]*[^-}]|[^-}])}}` // Don't match {{- or -}}
 var funcRegex = regexp.MustCompile(funcRegexStr)
 var wholeVarRegexStr = fmt.Sprintf("^%s$", varRegexStr)
 var wholeFuncRegexStr = fmt.Sprintf("^%s$", funcRegexStr)
@@ -62,10 +59,6 @@ var wholeFuncRegex = regexp.MustCompile(wholeFuncRegexStr)
 var optionalVarRegex = regexp.MustCompile(`{{([^{}]+?)\?}}`)
 
 // Helper functions for template processing
-func hasDataPrefix(str string) bool {
-	return strings.HasPrefix(str, ".Data") || strings.HasPrefix(str, "$.Data")
-}
-
 func removeDataPrefix(str string) string {
 	if strings.HasPrefix(str, ".Data.") {
 		return str[6:] // Remove ".Data."
@@ -143,7 +136,7 @@ func init() {
 }
 
 // Hydrate processes a value with template substitution
-func Hydrate(value any, stateParameters *Dict, parameterHydrationBehaviour *Dict) (any, error) {
+func Hydrate(value any, stateParameters *map[string]any, parameterHydrationBehaviour *map[string]any) (any, error) {
 	if stateParameters == nil {
 		return value, nil
 	}
@@ -170,12 +163,12 @@ func Hydrate(value any, stateParameters *Dict, parameterHydrationBehaviour *Dict
 			}
 		}
 		return hydrateString(v, data)
-	case Dict:
+	case map[string]any:
 		return hydrateDict(v, data, parameterHydrationBehaviour)
 	case []any:
 		return hydrateSlice(v, data, parameterHydrationBehaviour)
-	case []Dict:
-		result := make([]Dict, len(v))
+	case []map[string]any:
+		result := make([]map[string]any, len(v))
 		for i, dict := range v {
 			// Each dict in the slice should be hydrated with the same parameterHydrationBehaviour
 			hydrated, err := hydrateDict(dict, data, parameterHydrationBehaviour)
@@ -190,76 +183,17 @@ func Hydrate(value any, stateParameters *Dict, parameterHydrationBehaviour *Dict
 	}
 }
 
-func getData(stateParameters *Dict) (*Dict, error) {
+func getData(stateParameters *map[string]any) (*map[string]any, error) {
 	if stateParameters == nil {
 		return nil, nil
 	}
 
-	jsonStr, err := ToJSON(*stateParameters)
-	if err != nil {
-		return nil, fmt.Errorf("error marshaling data: %w", err)
-	}
-
-	data, err := JSONToDict(jsonStr)
-	if err != nil {
-		return nil, fmt.Errorf("error cloning data: %w", err)
-	}
-
-	// Preserve original types from the source data
-	// JSON unmarshaling converts numbers to float64, so we need to restore original types
-	for key, value := range *stateParameters {
-		if jsonValue, exists := data[key]; exists {
-			// Check if we need to preserve the original type
-			if shouldPreserveType(value, jsonValue) {
-				data[key] = value
-			}
-		} else {
-			// Copy non-JSONable values
-			data[key] = value
-		}
-	}
-
-	return &data, nil
-}
-
-// shouldPreserveType checks if we should preserve the original type over the JSON-unmarshaled type
-func shouldPreserveType(original, jsonValue any) bool {
-	// Preserve integer types that were converted to float64
-	switch original.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		if _, isFloat := jsonValue.(float64); isFloat {
-			return true
-		}
-	}
-	
-	// For nested structures, we need to preserve types recursively
-	switch orig := original.(type) {
-	case Dict:
-		if jsonDict, ok := jsonValue.(Dict); ok {
-			preserveNestedTypes(orig, jsonDict)
-		}
-	case map[string]any:
-		if jsonMap, ok := jsonValue.(map[string]any); ok {
-			preserveNestedTypes(orig, jsonMap)
-		}
-	}
-	
-	return false
-}
-
-// preserveNestedTypes recursively preserves types in nested structures
-func preserveNestedTypes(original, jsonValue map[string]any) {
-	for key, origVal := range original {
-		if jsonVal, exists := jsonValue[key]; exists {
-			if shouldPreserveType(origVal, jsonVal) {
-				jsonValue[key] = origVal
-			}
-		}
-	}
+	// Simply return the original data - no need for JSON round-trip
+	return stateParameters, nil
 }
 
 // HydrateString hydrates a string template with data
-func HydrateString(templateStr string, data *Dict, behaviour *Dict) (string, error) {
+func HydrateString(templateStr string, data *map[string]any, behaviour *map[string]any) (string, error) {
 	result, err := Hydrate(templateStr, data, behaviour)
 	if err != nil {
 		return "", err
@@ -271,19 +205,19 @@ func HydrateString(templateStr string, data *Dict, behaviour *Dict) (string, err
 }
 
 // HydrateDict hydrates a Dict with template data
-func HydrateDict(dict Dict, data *Dict, behaviour *Dict) (Dict, error) {
+func HydrateDict(dict map[string]any, data *map[string]any, behaviour *map[string]any) (map[string]any, error) {
 	result, err := Hydrate(dict, data, behaviour)
 	if err != nil {
 		return nil, err
 	}
-	if resultDict, ok := result.(Dict); ok {
+	if resultDict, ok := result.(map[string]any); ok {
 		return resultDict, nil
 	}
-	return nil, fmt.Errorf("result is not a Dict")
+	return nil, fmt.Errorf("result is not a map[string]any")
 }
 
 // HydrateSlice hydrates a slice with template data
-func HydrateSlice(slice []any, data *Dict, behaviour *Dict) ([]any, error) {
+func HydrateSlice(slice []any, data *map[string]any, behaviour *map[string]any) ([]any, error) {
 	result, err := Hydrate(slice, data, behaviour)
 	if err != nil {
 		return nil, err
@@ -295,8 +229,8 @@ func HydrateSlice(slice []any, data *Dict, behaviour *Dict) ([]any, error) {
 }
 
 // MergeSources merges multiple data sources into a single Dict
-func MergeSources(sources ...Dict) (Dict, error) {
-	result := make(Dict)
+func MergeSources(sources ...map[string]any) (map[string]any, error) {
+	result := make(map[string]any)
 	for _, source := range sources {
 		for k, v := range source {
 			result[k] = v
@@ -304,4 +238,3 @@ func MergeSources(sources ...Dict) (Dict, error) {
 	}
 	return result, nil
 }
-

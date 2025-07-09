@@ -10,35 +10,35 @@ import (
 func TestTemplateFunctions(t *testing.T) {
 	t.Run("addkey function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
-			"object": Dict{"existingKey": "existingValue"},
+		data := map[string]any{
+			"object": map[string]any{"existingKey": "existingValue"},
 			"value":  "newValue",
 		}
 
 		result := addkey("object", "newKey", "value", data, &missingKeys)
-		expected := Dict{"existingKey": "existingValue", "newKey": "newValue"}
+		expected := map[string]any{"existingKey": "existingValue", "newKey": "newValue"}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("removekey function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
-			"object": Dict{"key1": "value1", "key2": "value2"},
+		data := map[string]any{
+			"object": map[string]any{"key1": "value1", "key2": "value2"},
 		}
 
 		result := removekey("object", "key1", data, &missingKeys)
-		expected := Dict{"key2": "value2"}
+		expected := map[string]any{"key2": "value2"}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("mapToDict function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"stringList": []any{"value1", "value2", "value3"},
 		}
 
 		result := mapToDict("stringList", "key", data, &missingKeys)
-		expected := []Dict{
+		expected := []map[string]any{
 			{"key": "value1"},
 			{"key": "value2"},
 			{"key": "value3"},
@@ -48,7 +48,7 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("coalesce function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"existingKey": "value",
 		}
 
@@ -67,29 +67,29 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("extractSlice function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"items": []any{
-				Dict{"memory": Dict{"ID": "1", "Content": "Memory 1"}, "distance": 0.5},
-				Dict{"memory": Dict{"ID": "2", "Content": "Memory 2"}, "distance": 0.3},
+				map[string]any{"memory": map[string]any{"ID": "1", "Content": "Memory 1"}, "distance": 0.5},
+				map[string]any{"memory": map[string]any{"ID": "2", "Content": "Memory 2"}, "distance": 0.3},
 			},
 		}
 
 		result := extractSlice("items", "memory", data, &missingKeys)
 		expected := []any{
-			Dict{"ID": "1", "Content": "Memory 1"},
-			Dict{"ID": "2", "Content": "Memory 2"},
+			map[string]any{"ID": "1", "Content": "Memory 1"},
+			map[string]any{"ID": "2", "Content": "Memory 2"},
 		}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("dedupeBy function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"simpleItems": []any{
-				Dict{"id": "1", "name": "Item 1"},
-				Dict{"id": "2", "name": "Item 2"},
-				Dict{"id": "1", "name": "Item 1 Duplicate"},
-				Dict{"id": "3", "name": "Item 3"},
+				map[string]any{"id": "1", "name": "Item 1"},
+				map[string]any{"id": "2", "name": "Item 2"},
+				map[string]any{"id": "1", "name": "Item 1 Duplicate"},
+				map[string]any{"id": "3", "name": "Item 3"},
 			},
 		}
 
@@ -99,38 +99,38 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("find function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"items": []any{
-				Dict{"id": "1", "name": "Item 1"},
-				Dict{"id": "2", "name": "Item 2"},
-				Dict{"id": "3", "name": "Item 3"},
+				map[string]any{"id": "1", "name": "Item 1"},
+				map[string]any{"id": "2", "name": "Item 2"},
+				map[string]any{"id": "3", "name": "Item 3"},
 			},
 			"targetId": "2",
 		}
 
 		result := find("items", "id", "targetId", data, &missingKeys)
-		expected := Dict{"id": "2", "name": "Item 2"}
+		expected := map[string]any{"id": "2", "name": "Item 2"}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("findByValue function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"items": []any{
-				Dict{"id": "1", "name": "Item 1"},
-				Dict{"id": "2", "name": "Item 2"},
-				Dict{"id": "3", "name": "Item 3"},
+				map[string]any{"id": "1", "name": "Item 1"},
+				map[string]any{"id": "2", "name": "Item 2"},
+				map[string]any{"id": "3", "name": "Item 3"},
 			},
 		}
 
 		result := findByValue("items", "id", "2", data, &missingKeys)
-		expected := Dict{"id": "2", "name": "Item 2"}
+		expected := map[string]any{"id": "2", "name": "Item 2"}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("getAtIndex function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"items": []any{"first", "second", "third"},
 		}
 
@@ -140,7 +140,7 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("slice function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"items": []any{"a", "b", "c", "d", "e"},
 		}
 
@@ -151,19 +151,19 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("merge function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
-			"target": Dict{"a": 1, "b": 2},
-			"source": Dict{"c": 3, "d": 4},
+		data := map[string]any{
+			"target": map[string]any{"a": 1, "b": 2},
+			"source": map[string]any{"c": 3, "d": 4},
 		}
 
 		result := merge("target", "source", data, &missingKeys)
-		expected := Dict{"a": 1, "b": 2, "c": 3, "d": 4}
+		expected := map[string]any{"a": 1, "b": 2, "c": 3, "d": 4}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("incrementCounter function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"counter": 5,
 		}
 
@@ -177,7 +177,7 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("incrementCounterBy function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"counter": 10,
 		}
 
@@ -187,24 +187,24 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("addkeytoall function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"memories": []any{
-				Dict{"ID": "1", "content": "memory 1"},
-				Dict{"ID": "2", "content": "memory 2"},
+				map[string]any{"ID": "1", "content": "memory 1"},
+				map[string]any{"ID": "2", "content": "memory 2"},
 			},
 		}
 
 		result := addkeytoall("memories", "resource_id", "resource-123", data, &missingKeys)
 		expected := []any{
-			Dict{"ID": "1", "content": "memory 1", "resource_id": "resource-123"},
-			Dict{"ID": "2", "content": "memory 2", "resource_id": "resource-123"},
+			map[string]any{"ID": "1", "content": "memory 1", "resource_id": "resource-123"},
+			map[string]any{"ID": "2", "content": "memory 2", "resource_id": "resource-123"},
 		}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("concat function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"first":  "Hello",
 			"second": "World",
 		}
@@ -215,7 +215,7 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("getOrOriginal function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"existingKey": "value",
 		}
 
@@ -230,35 +230,35 @@ func TestTemplateFunctions(t *testing.T) {
 
 	t.Run("coalescelist function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"myList": []any{"a", "b", "c"},
 		}
 
-		result := coalescelist([]string{"missingList", "myList"}, data, &missingKeys)
+		result := coalescelist("myList", data, &missingKeys)
 		expected := []any{"a", "b", "c"}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("filter function", func(t *testing.T) {
 		var missingKeys []string
-		data := Dict{
+		data := map[string]any{
 			"items": []any{
-				Dict{"type": "A", "value": 1},
-				Dict{"type": "B", "value": 2},
-				Dict{"type": "A", "value": 3},
+				map[string]any{"type": "A", "value": 1},
+				map[string]any{"type": "B", "value": 2},
+				map[string]any{"type": "A", "value": 3},
 			},
 		}
 
 		result := filter("items", "type", "A", data, &missingKeys)
 		expected := []any{
-			Dict{"type": "A", "value": 1},
-			Dict{"type": "A", "value": 3},
+			map[string]any{"type": "A", "value": 1},
+			map[string]any{"type": "A", "value": 3},
 		}
 		assert.Equal(t, expected, result)
 	})
 
 	t.Run("truthy function", func(t *testing.T) {
-		data := Dict{
+		data := map[string]any{
 			"trueValue":  true,
 			"falseValue": false,
 			"emptyStr":   "",
@@ -323,38 +323,28 @@ func TestTemplateFunctions(t *testing.T) {
 	})
 
 	t.Run("add function", func(t *testing.T) {
-		result, err := add(10, 5)
-		assert.NoError(t, err)
-		assert.Equal(t, float64(15), result)
-
-		result, err = add("10", "5")
-		assert.NoError(t, err)
-		assert.Equal(t, float64(15), result)
+		result := add(10, 5)
+		assert.Equal(t, 15, result)
 	})
 
 	t.Run("sub function", func(t *testing.T) {
-		result, err := sub(10, 5)
-		assert.NoError(t, err)
-		assert.Equal(t, float64(5), result)
+		result := sub(10, 5)
+		assert.Equal(t, 5, result)
 	})
 
 	t.Run("gt function", func(t *testing.T) {
-		result, err := gt(10, 5)
-		assert.NoError(t, err)
+		result := gt(10, 5)
 		assert.True(t, result)
 
-		result, err = gt(5, 10)
-		assert.NoError(t, err)
+		result = gt(5, 10)
 		assert.False(t, result)
 	})
 
 	t.Run("lt function", func(t *testing.T) {
-		result, err := lt(5, 10)
-		assert.NoError(t, err)
+		result := lt(5, 10)
 		assert.True(t, result)
 
-		result, err = lt(10, 5)
-		assert.NoError(t, err)
+		result = lt(10, 5)
 		assert.False(t, result)
 	})
 
@@ -366,7 +356,7 @@ func TestTemplateFunctions(t *testing.T) {
 	})
 
 	t.Run("toJSON function", func(t *testing.T) {
-		result := toJSON(Dict{"key": "value", "number": 42})
+		result := toJSON(map[string]any{"key": "value", "number": 42})
 		assert.Contains(t, result, `"key":"value"`)
 		assert.Contains(t, result, `"number":42`)
 	})
@@ -384,9 +374,7 @@ func TestTemplateFunctions(t *testing.T) {
 	})
 
 	t.Run("noop function", func(t *testing.T) {
-		assert.Equal(t, "test", noop("test"))
-		assert.Equal(t, 42, noop(42))
-		assert.Equal(t, nil, noop(nil))
+		assert.Equal(t, "", noop())
 	})
 }
 
@@ -394,15 +382,15 @@ func TestDedupeBy(t *testing.T) {
 	t.Parallel()
 
 	// Create test data
-	testData := Dict{
+	testData := map[string]any{
 		"simpleItems": []any{
-			Dict{"id": "1", "name": "Item 1"},
-			Dict{"id": "2", "name": "Item 2"},
-			Dict{"id": "1", "name": "Item 1 Duplicate"},
-			Dict{"id": "3", "name": "Item 3"},
+			map[string]any{"id": "1", "name": "Item 1"},
+			map[string]any{"id": "2", "name": "Item 2"},
+			map[string]any{"id": "1", "name": "Item 1 Duplicate"},
+			map[string]any{"id": "3", "name": "Item 3"},
 		},
 		"complexItems": []any{
-			Dict{
+			map[string]any{
 				"ID":      "1",
 				"Content": "First item",
 				"CreatedAt": map[string]any{
@@ -410,7 +398,7 @@ func TestDedupeBy(t *testing.T) {
 					"Valid": true,
 				},
 			},
-			Dict{
+			map[string]any{
 				"ID":      "2",
 				"Content": "Second item",
 				"CreatedAt": map[string]any{
@@ -418,7 +406,7 @@ func TestDedupeBy(t *testing.T) {
 					"Valid": true,
 				},
 			},
-			Dict{
+			map[string]any{
 				"ID":      "1", // Duplicate ID
 				"Content": "First item duplicate",
 				"CreatedAt": map[string]any{
@@ -426,7 +414,7 @@ func TestDedupeBy(t *testing.T) {
 					"Valid": true,
 				},
 			},
-			Dict{
+			map[string]any{
 				"ID":      "3",
 				"Content": "Third item",
 				"CreatedAt": map[string]any{
@@ -436,22 +424,22 @@ func TestDedupeBy(t *testing.T) {
 			},
 		},
 		"nestedItems": []any{
-			Dict{
-				"metadata": Dict{
+			map[string]any{
+				"metadata": map[string]any{
 					"id":   "A",
 					"type": "first",
 				},
 				"content": "Content A",
 			},
-			Dict{
-				"metadata": Dict{
+			map[string]any{
+				"metadata": map[string]any{
 					"id":   "B",
 					"type": "second",
 				},
 				"content": "Content B",
 			},
-			Dict{
-				"metadata": Dict{
+			map[string]any{
+				"metadata": map[string]any{
 					"id":   "A", // Duplicate nested ID
 					"type": "third",
 				},
@@ -497,17 +485,17 @@ func TestDedupeBy(t *testing.T) {
 			// Verify no duplicates exist in result
 			seen := make(map[string]bool)
 			for _, item := range result {
-				itemDict, ok := item.(Dict)
+				itemDict, ok := item.(map[string]any)
 				if !ok {
-					t.Fatalf("Expected Dict item, got %T", item)
+					t.Fatalf("Expected map[string]any item, got %T", item)
 				}
 
 				// Extract the field value, handling nested fields
 				var fieldValue any
 				if tc.name == "Nested field deduplication" {
-					metadata, ok := itemDict["metadata"].(Dict)
+					metadata, ok := itemDict["metadata"].(map[string]any)
 					if !ok {
-						t.Fatalf("Expected metadata to be Dict, got %T", itemDict["metadata"])
+						t.Fatalf("Expected metadata to be map[string]any, got %T", itemDict["metadata"])
 					}
 					fieldValue = metadata["id"]
 				} else {
@@ -528,52 +516,52 @@ func TestAddkey(t *testing.T) {
 		toObj       string
 		key         string
 		valueKey    string
-		data        Dict
+		data        map[string]any
 		missingKeys *[]string
-		expected    Dict
+		expected    map[string]any
 	}{
 		{
 			name:        "Add key to existing object",
 			toObj:       "object",
 			key:         "newKey",
 			valueKey:    "value",
-			data:        Dict{"object": Dict{"existingKey": "existingValue"}, "value": "newValue"},
+			data:        map[string]any{"object": map[string]any{"existingKey": "existingValue"}, "value": "newValue"},
 			missingKeys: &[]string{},
-			expected:    Dict{"existingKey": "existingValue", "newKey": "newValue"},
+			expected:    map[string]any{"existingKey": "existingValue", "newKey": "newValue"},
 		},
 		{
 			name:        "Add key to empty object",
 			toObj:       "emptyObject",
 			key:         "firstKey",
 			valueKey:    "value",
-			data:        Dict{"emptyObject": Dict{}, "value": "someValue"},
+			data:        map[string]any{"emptyObject": map[string]any{}, "value": "someValue"},
 			missingKeys: &[]string{},
-			expected:    Dict{"firstKey": "someValue"},
+			expected:    map[string]any{"firstKey": "someValue"},
 		},
 		{
 			name:        "Overwrite existing key",
 			toObj:       "object",
 			key:         "existingKey",
 			valueKey:    "newValue",
-			data:        Dict{"object": Dict{"existingKey": "oldValue"}, "newValue": "updatedValue"},
+			data:        map[string]any{"object": map[string]any{"existingKey": "oldValue"}, "newValue": "updatedValue"},
 			missingKeys: &[]string{},
-			expected:    Dict{"existingKey": "updatedValue"},
+			expected:    map[string]any{"existingKey": "updatedValue"},
 		},
 		{
 			name:        "Add nested value",
 			toObj:       "object",
 			key:         "nested",
 			valueKey:    "nestedValue",
-			data:        Dict{"object": Dict{}, "nestedValue": Dict{"a": 1, "b": 2}},
+			data:        map[string]any{"object": map[string]any{}, "nestedValue": map[string]any{"a": 1, "b": 2}},
 			missingKeys: &[]string{},
-			expected:    Dict{"nested": Dict{"a": 1, "b": 2}},
+			expected:    map[string]any{"nested": map[string]any{"a": 1, "b": 2}},
 		},
 		{
 			name:        "Object not found",
 			toObj:       "nonExistentObject",
 			key:         "key",
 			valueKey:    "value",
-			data:        Dict{"value": "someValue"},
+			data:        map[string]any{"value": "someValue"},
 			missingKeys: &[]string{},
 			expected:    nil, // Should return nil since object doesn't exist
 		},
@@ -603,7 +591,7 @@ func TestExtractSlice(t *testing.T) {
 		name        string
 		array       string
 		field       string
-		data        Dict
+		data        map[string]any
 		missingKeys *[]string
 		expected    []any
 	}{
@@ -611,17 +599,17 @@ func TestExtractSlice(t *testing.T) {
 			name:  "Extract objects from array",
 			array: "items",
 			field: "memory",
-			data: Dict{
+			data: map[string]any{
 				"items": []any{
-					Dict{
-						"memory": Dict{
+					map[string]any{
+						"memory": map[string]any{
 							"ID":      "1",
 							"Content": "Memory 1",
 						},
 						"distance": 0.5,
 					},
-					Dict{
-						"memory": Dict{
+					map[string]any{
+						"memory": map[string]any{
 							"ID":      "2",
 							"Content": "Memory 2",
 						},
@@ -631,11 +619,11 @@ func TestExtractSlice(t *testing.T) {
 			},
 			missingKeys: &[]string{},
 			expected: []any{
-				Dict{
+				map[string]any{
 					"ID":      "1",
 					"Content": "Memory 1",
 				},
-				Dict{
+				map[string]any{
 					"ID":      "2",
 					"Content": "Memory 2",
 				},
@@ -645,10 +633,10 @@ func TestExtractSlice(t *testing.T) {
 			name:  "Extract string values",
 			array: "people",
 			field: "name",
-			data: Dict{
+			data: map[string]any{
 				"people": []any{
-					Dict{"name": "Alice", "age": 25},
-					Dict{"name": "Bob", "age": 30},
+					map[string]any{"name": "Alice", "age": 25},
+					map[string]any{"name": "Bob", "age": 30},
 				},
 			},
 			missingKeys: &[]string{},
@@ -661,10 +649,10 @@ func TestExtractSlice(t *testing.T) {
 			name:  "Extract numeric values",
 			array: "people",
 			field: "age",
-			data: Dict{
+			data: map[string]any{
 				"people": []any{
-					Dict{"name": "Alice", "age": 25},
-					Dict{"name": "Bob", "age": 30},
+					map[string]any{"name": "Alice", "age": 25},
+					map[string]any{"name": "Bob", "age": 30},
 				},
 			},
 			missingKeys: &[]string{},
@@ -677,7 +665,7 @@ func TestExtractSlice(t *testing.T) {
 			name:  "Empty array",
 			array: "items",
 			field: "memory",
-			data: Dict{
+			data: map[string]any{
 				"items": []any{},
 			},
 			missingKeys: &[]string{},
@@ -687,7 +675,7 @@ func TestExtractSlice(t *testing.T) {
 			name:        "Array not found",
 			array:       "nonexistent",
 			field:       "memory",
-			data:        Dict{},
+			data:        map[string]any{},
 			missingKeys: &[]string{},
 			expected:    []any{},
 		},
@@ -695,19 +683,19 @@ func TestExtractSlice(t *testing.T) {
 			name:  "Missing field in some items",
 			array: "items",
 			field: "memory",
-			data: Dict{
+			data: map[string]any{
 				"items": []any{
-					Dict{
-						"memory": Dict{
+					map[string]any{
+						"memory": map[string]any{
 							"ID":      "1",
 							"Content": "Memory 1",
 						},
 					},
-					Dict{
+					map[string]any{
 						"other": "value",
 					},
-					Dict{
-						"memory": Dict{
+					map[string]any{
+						"memory": map[string]any{
 							"ID":      "2",
 							"Content": "Memory 2",
 						},
@@ -716,11 +704,11 @@ func TestExtractSlice(t *testing.T) {
 			},
 			missingKeys: &[]string{},
 			expected: []any{
-				Dict{
+				map[string]any{
 					"ID":      "1",
 					"Content": "Memory 1",
 				},
-				Dict{
+				map[string]any{
 					"ID":      "2",
 					"Content": "Memory 2",
 				},

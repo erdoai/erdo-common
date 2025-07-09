@@ -1,4 +1,4 @@
-package erdotypes
+package types
 
 // Template function definitions for use in bot exports and state references
 // These should match the functions available in backend/utils/parameters/parameters.go

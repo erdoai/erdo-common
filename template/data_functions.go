@@ -1,0 +1,774 @@
+package template
+
+import (
+	"fmt"
+	"log"
+	"reflect"
+	"strconv"
+	"strings"
+	"text/template"
+)
+
+// Functions that require .Data and .MissingKeys parameters
+var dataFuncMap = template.FuncMap{
+	"get":                          get,
+	"concat":                       concat,
+	"getOrOriginal":                getOrOriginal,
+	"sliceEnd":                     sliceEnd,
+	"sliceEndKeepFirstUserMessage": sliceEndKeepFirstUserMessage,
+	"slice":                        slice,
+	"extractSlice":                 extractSlice,
+	"dedupeBy":                     dedupeBy,
+	"find":                         find,
+	"findByValue":                  findByValue,
+	"getAtIndex":                   getAtIndex,
+	"merge":                        merge,
+	"coalescelist":                 coalescelist,
+	"addkey":                       addkey,
+	"removekey":                    removekey,
+	"mapToDict":                    mapToDict,
+	"addkeytoall":                  addkeytoall,
+	"incrementCounter":             incrementCounter,
+	"incrementCounterBy":           incrementCounterBy,
+	"coalesce":                     coalesce,
+	"filter":                       filter,
+}
+
+func addkey(toObj string, key string, valueKey string, data map[string]any, missingKeys *[]string) map[string]any {
+	_obj := get(toObj, data, missingKeys)
+	obj, ok := _obj.(map[string]any)
+	if !ok {
+		log.Printf("Error casting to dict in addkey: %T %v", _obj, _obj)
+		return nil
+	}
+
+	value := get(valueKey, data, missingKeys)
+
+	result, err := Set(obj, key, value)
+	if err != nil {
+		log.Printf("Error setting key %v to valueKey %v in addkey: %v", key, valueKey, err)
+		return obj
+	}
+
+	return result
+}
+
+func removekey(toObj string, key string, data map[string]any, missingKeys *[]string) map[string]any {
+	_obj := get(toObj, data, missingKeys)
+	obj, ok := _obj.(map[string]any)
+	if !ok {
+		log.Printf("Error casting to dict in removekey: %T %v", _obj, _obj)
+		return obj
+	}
+
+	delete(obj, key)
+
+	return obj
+}
+
+// mapToDict converts a list of values to a list of dictionaries with a specified key
+// Example: {{map "myList" "myKey"}} will convert ["value1", "value2"] to [{"myKey": "value1"}, {"myKey": "value2"}]
+func mapToDict(listKey string, dictKey string, data map[string]any, missingKeys *[]string) []map[string]any {
+	_list := get(listKey, data, missingKeys)
+	if _list == nil {
+		// Remove the key from missingKeys if it was added
+		// This is because we want to return an empty list for non-existent lists
+		// rather than treating it as a missing key
+		for i, key := range *missingKeys {
+			if key == listKey {
+				*missingKeys = append((*missingKeys)[:i], (*missingKeys)[i+1:]...)
+				break
+			}
+		}
+		return []map[string]any{}
+	}
+
+	list, ok := _list.([]any)
+	if !ok {
+		log.Printf("Error casting to list in mapToDict: %T %v", _list, _list)
+		return []map[string]any{}
+	}
+
+	result := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		result = append(result, map[string]any{dictKey: item})
+	}
+
+	return result
+}
+
+func coalescelist(list string, data map[string]any, missingKeys *[]string) []any {
+	_list := get(list, data, missingKeys)
+	if _list == nil {
+		return []any{}
+	}
+	return _list.([]any)
+}
+
+func getSliceInt(v any, data map[string]any, missingKeys *[]string) (*int, bool) {
+	var ret int
+	ok := true
+	switch v := v.(type) {
+	case int:
+		ret = v
+	case string:
+		// Check if numeric
+		if num, err := strconv.Atoi(v); err == nil {
+			// If it's a numeric string, use the number directly
+			ret = num
+		} else {
+			// If it's not a numeric string, try to get it from data
+			_ret := get(v, data, missingKeys)
+			ret, ok = _ret.(int)
+			if !ok {
+				log.Printf("slice start not ok: %T %v %T %v", _ret, _ret, v, v)
+				return nil, false
+			}
+		}
+	default:
+		log.Printf("slice start unexpected type: %T %v", v, v)
+		return nil, false
+	}
+
+	return &ret, ok
+}
+
+func slice(array string, start any, end any, data map[string]any, missingKeys *[]string) []any {
+	_items := get(array, data, missingKeys)
+	if _items == nil {
+		log.Printf("slice items is nil")
+		return []any{}
+	}
+
+	items, ok := _items.([]any)
+	if !ok {
+		log.Printf("slice items not ok: %T %v", _items, _items)
+		return []any{}
+	}
+
+	_startInt, ok := getSliceInt(start, data, missingKeys)
+	if !ok {
+		return []any{}
+	}
+	startInt := *_startInt
+
+	_endInt, ok := getSliceInt(end, data, missingKeys)
+	if !ok {
+		return []any{}
+	}
+	endInt := *_endInt
+
+	if startInt < 0 {
+		startInt = 0
+	}
+
+	if endInt > len(items) {
+		endInt = len(items)
+	}
+
+	return items[startInt:endInt]
+}
+
+// extractSlice extracts a field from each item in a list and returns those values as a new list
+// Example: {{extractSlice "items" "name"}} will extract the name field from each item in the items list
+// It supports extracting any type of value - strings, numbers, objects, arrays, etc.
+func extractSlice(array string, propertyPath string, data map[string]any, missingKeys *[]string) []any {
+	items := get(array, data, missingKeys)
+	if items == nil {
+		return []any{}
+	}
+
+	var result []any
+	if items, ok := items.([]any); ok {
+		result = make([]any, 0, len(items))
+		for _, item := range items {
+			if val := get(propertyPath, item, missingKeys); val != nil {
+				result = append(result, val)
+			}
+		}
+	}
+	return result
+}
+
+// dedupeBy removes duplicates from a slice based on a specific field
+func dedupeBy(array string, field string, data map[string]any, missingKeys *[]string) []any {
+	_items := get(array, data, missingKeys)
+	if _items == nil {
+		return []any{}
+	}
+
+	items, ok := _items.([]any)
+	if !ok {
+		log.Printf("dedupeBy: items is not a slice, got type %T for array %q", _items, array)
+		return []any{}
+	}
+
+	if len(items) == 0 {
+		return []any{}
+	}
+
+	seen := make(map[string]bool)
+	result := make([]any, 0, len(items))
+
+	for _, item := range items {
+		// Use get to extract the value, handling nested fields and different data types properly
+		fieldValue := get(field, item, missingKeys)
+		if fieldValue == nil {
+			// If we can't find the field, just add the item and continue
+			result = append(result, item)
+			continue
+		}
+
+		// Convert the field value to a string for the map key
+		valueStr := fmt.Sprintf("%v", fieldValue)
+
+		if !seen[valueStr] {
+			seen[valueStr] = true
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
+// find searches for an item in a slice where the specified field matches the target value
+func find(arrayKey string, fieldKey string, targetKey string, data map[string]any, missingKeys *[]string) any {
+	_items := get(arrayKey, data, missingKeys)
+	if _items == nil {
+		return nil
+	}
+
+	targetValue := get(targetKey, data, missingKeys)
+	if targetValue == nil {
+		return nil
+	}
+
+	targetStr := fmt.Sprintf("%v", targetValue)
+
+	items, ok := _items.([]any)
+	if !ok {
+		return nil
+	}
+
+	for _, item := range items {
+		if value := get(fieldKey, item, missingKeys); value != nil {
+			// Convert both values to strings for comparison
+			var valueStr string
+			switch v := value.(type) {
+			case float64:
+				// Handle integers stored as float64 in JSON
+				if v == float64(int64(v)) {
+					valueStr = fmt.Sprintf("%d", int64(v))
+				} else {
+					valueStr = fmt.Sprintf("%g", v)
+				}
+			case int:
+				valueStr = fmt.Sprintf("%d", v)
+			case string:
+				valueStr = v
+			default:
+				valueStr = fmt.Sprintf("%v", v)
+			}
+
+			if valueStr == targetStr {
+				return item
+			}
+		}
+	}
+
+	return nil
+}
+
+// find searches for an item in a slice where the specified field matches the target value
+func findByValue(arrayKey string, fieldKey string, targetValue any, data map[string]any, missingKeys *[]string) any {
+	_items := get(arrayKey, data, missingKeys)
+	if _items == nil {
+		return nil
+	}
+
+	targetStr := fmt.Sprintf("%v", targetValue)
+
+	items, ok := _items.([]any)
+	if !ok {
+		return nil
+	}
+
+	for _, item := range items {
+		if value := get(fieldKey, item, missingKeys); value != nil {
+			// Convert both values to strings for comparison
+			var valueStr string
+			switch v := value.(type) {
+			case float64:
+				// Handle integers stored as float64 in JSON
+				if v == float64(int64(v)) {
+					valueStr = fmt.Sprintf("%d", int64(v))
+				} else {
+					valueStr = fmt.Sprintf("%g", v)
+				}
+			case int:
+				valueStr = fmt.Sprintf("%d", v)
+			case string:
+				valueStr = v
+			default:
+				valueStr = fmt.Sprintf("%v", v)
+			}
+
+			if valueStr == targetStr {
+				return item
+			}
+		}
+	}
+
+	log.Printf("findByValue: no item found for arrayKey %s, fieldKey %s, targetValue %v", arrayKey, fieldKey, targetValue)
+
+	return nil
+}
+
+// getAtIndex returns the item at the specified index in the slice
+func getAtIndex(array string, index any, data map[string]any, missingKeys *[]string) any {
+	_items := get(array, data, missingKeys)
+	if _items == nil {
+		return nil
+	}
+
+	items, ok := _items.([]any)
+	if !ok {
+		return nil
+	}
+
+	switch v := index.(type) {
+	case int:
+		return items[v]
+	case string:
+		if indexInt, err := strconv.Atoi(v); err == nil {
+			return items[indexInt]
+		}
+	}
+
+	return nil
+}
+
+// merge combines multiple slices into one
+func merge(array1 string, array2 string, data map[string]any, missingKeys *[]string) []any {
+	items1 := get(array1, data, missingKeys)
+	items2 := get(array2, data, missingKeys)
+
+	var slice1, slice2 []any
+
+	// Convert first array
+	switch v := items1.(type) {
+	case []any:
+		slice1 = v
+	case nil:
+		slice1 = []any{}
+	default:
+		slice1 = []any{v}
+	}
+
+	// Convert second array
+	switch v := items2.(type) {
+	case []any:
+		slice2 = v
+	case nil:
+		slice2 = []any{}
+	default:
+		slice2 = []any{v}
+	}
+
+	// Combine slices
+	result := make([]any, 0, len(slice1)+len(slice2))
+	result = append(result, slice1...)
+	result = append(result, slice2...)
+	return result
+}
+
+// getOrOriginal retrieves a value from data using the specified key.
+// If the key is optional (has ? suffix or is defined as optional in keyDefinitions)
+// and the value is nil, it returns nil.
+// Otherwise, it returns the original template string if the value is nil.
+func getOrOriginal(key string, keyDefinitions KeyDefinitions, data map[string]any, missingKeys *[]string) any {
+	// Check if parameter is optional
+	isOptional := strings.HasSuffix(key, "?")
+	cleanKey := strings.TrimSuffix(key, "?")
+
+	// Remove .Data. prefix if present
+	cleanKey = removeDataPrefix(cleanKey)
+
+	value := get(cleanKey, data, missingKeys)
+
+	if value == nil {
+		if isOptional || isKeyOptional(key, keyDefinitions) {
+			return nil
+		}
+		return fmt.Sprintf("{{%s}}", cleanKey)
+	}
+	return value
+}
+
+func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
+	_slice := get(sliceKey, data, missingKeys)
+	if _slice == nil {
+		return nil
+	}
+
+	slice, ok := _slice.([]any)
+	if !ok {
+		*missingKeys = append(*missingKeys, sliceKey)
+		return nil
+	}
+
+	if n >= len(slice) {
+		return slice
+	}
+
+	return slice[len(slice)-n:]
+}
+
+// sliceEndKeepFirstUserMessage returns the last n messages but always keeps the first user message
+// if it exists. This is useful for maintaining context while limiting message history.
+func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
+	_slice := get(sliceKey, data, missingKeys)
+	if _slice == nil {
+		return nil
+	}
+
+	slice, ok := _slice.([]any)
+	if !ok {
+		*missingKeys = append(*missingKeys, sliceKey)
+		return nil
+	}
+
+	if len(slice) == 0 {
+		return slice
+	}
+
+	// If we want all messages or more than available, return everything
+	if n >= len(slice) {
+		return slice
+	}
+
+	// Get the last n messages first
+	lastNMessages := slice[len(slice)-n:]
+
+	// Check if the first message in the slice is already a user message
+	if len(lastNMessages) > 0 {
+		if isUserMessage(lastNMessages[0]) {
+			return lastNMessages
+		}
+	}
+
+	// Find the first user message in the part that would be cut off (before the slice start)
+	// We search backwards from the slice start point to find the most recent user message
+	sliceStartIndex := len(slice) - n
+	var firstUserMessage any
+	for i := sliceStartIndex - 1; i >= 0; i-- {
+		if isUserMessage(slice[i]) {
+			firstUserMessage = slice[i]
+			break
+		}
+	}
+
+	// If there's no user message in the cut-off part, just return the last n messages
+	if firstUserMessage == nil {
+		return lastNMessages
+	}
+
+	// Prepend the first user message to the last n messages
+	result := make([]any, 0, n+1)
+	result = append(result, firstUserMessage)
+	result = append(result, lastNMessages...)
+
+	return result
+}
+
+// isUserMessage checks if a message has role "user"
+func isUserMessage(msg any) bool {
+	if msgDict, ok := msg.(map[string]any); ok {
+		if role, exists := msgDict["role"]; exists {
+			if roleStr, ok := role.(string); ok && roleStr == "user" {
+				return true
+			}
+		}
+	} else if msgMap, ok := msg.(map[string]any); ok {
+		if role, exists := msgMap["role"]; exists {
+			if roleStr, ok := role.(string); ok && roleStr == "user" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// get retrieves a value from a nested data structure using a dot-separated key path.
+// It resolves paths through dictionaries and slices, handles optional keys, and tracks
+// missing required keys in the missingKeys slice.
+// For example:
+// - "user.name" will navigate to the "name" field in the "user" dictionary
+// - "items.0.name" will navigate to the "name" field in the first element of the "items" slice
+// Returns nil if the key is not found or can't be accessed.
+func get(key string, data any, missingKeys *[]string) any {
+	lookupKey, isOptional := cleanKey(key)
+
+	parts := strings.FieldsFunc(lookupKey, func(r rune) bool {
+		return r == '.' || r == '[' || r == ']'
+	})
+	current := data
+
+	if current == nil {
+		log.Printf("get: data is nil for key %q", lookupKey)
+		handleMissingKey(lookupKey, isOptional, missingKeys)
+		return nil
+	}
+
+	for _, part := range parts {
+		if strings.HasPrefix(part, "\"") || strings.HasSuffix(part, "\"") || strings.HasPrefix(part, "'") {
+			log.Printf("get: key part incorrectly has wrapping quotes: %s", part)
+		}
+		switch m := current.(type) {
+		case map[string]any:
+			if val, exists := m[part]; exists {
+				current = val
+			} else {
+				log.Printf("get: key %q not found in dict at path %q", part, lookupKey)
+				handleMissingKey(lookupKey, isOptional, missingKeys)
+				return nil
+			}
+		case []any:
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(m) {
+				log.Printf("get: invalid array index %q at path %q", part, lookupKey)
+				handleMissingKey(lookupKey, isOptional, missingKeys)
+				return nil
+			}
+			current = m[index]
+		default:
+			log.Printf("get: cannot access %q in type %T at path %q", part, current, lookupKey)
+			handleMissingKey(lookupKey, isOptional, missingKeys)
+			return nil
+		}
+	}
+
+	// If we get a float64 that's actually an int, convert it back
+	if num, ok := current.(float64); ok && num == float64(int(num)) {
+		return int(num)
+	}
+
+	return current
+}
+
+// concat extracts values from a slice of dictionaries and joins them with a separator.
+// It retrieves a slice using the 'key' parameter, then for each item in the slice,
+// it extracts the value at 'property' and concatenates these values with 'sep'.
+// For example, concat(", ", "users", "name", ...) would extract the "name" field from
+// each object in the "users" slice and join them with commas.
+// Returns the original template if the key is not found or the slice is empty.
+func concat(sep string, key string, property string, data any, missingKeys *[]string) string {
+	// Escape special characters in sep and property
+	escapedSep := template.JSEscapeString(sep)
+	escapedProperty := template.JSEscapeString(property)
+	escapedKey := template.JSEscapeString(key)
+	funcCall := fmt.Sprintf("concat \"%s\" \"%s\" \"%s\"", escapedSep, escapedKey, escapedProperty)
+	original := fmt.Sprintf("{{%s}}", appendDataParams(funcCall))
+
+	items := get(key, data, missingKeys)
+	if items == nil {
+		return original
+	}
+
+	var itemsSlice []any
+	switch v := items.(type) {
+	case []map[string]any:
+		itemsSlice = make([]any, len(v))
+		for i, m := range v {
+			itemsSlice[i] = m
+		}
+	case []any:
+		itemsSlice = v
+	default:
+		*missingKeys = append(*missingKeys, escapedKey)
+		return original
+	}
+
+	itemsStrs := []string{}
+	for _, item := range itemsSlice {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			*missingKeys = append(*missingKeys, escapedKey)
+			return original
+		}
+		itemStr, ok := get(property, itemMap, &[]string{}).(string)
+		if !ok {
+			// if we can't get the property, skip it
+			continue
+		}
+		itemsStrs = append(itemsStrs, itemStr)
+	}
+
+	if len(itemsStrs) == 0 {
+		*missingKeys = append(*missingKeys, escapedKey)
+		return original
+	}
+
+	return strings.Join(itemsStrs, sep)
+}
+
+// addkeytoall adds a key with the same value to all items in a list
+// Example: {{addkeytoall "myList" "newKey" value}} adds the key "newKey" with value to each item in "myList"
+// Supports nested keys using dot notation (e.g., "metadata.resource_id")
+func addkeytoall(listKey string, key string, value any, data map[string]any, missingKeys *[]string) []any {
+	_list := get(listKey, data, missingKeys)
+	if _list == nil {
+		return []any{}
+	}
+
+	list, ok := _list.([]any)
+	if !ok {
+		log.Printf("Error casting to list in addkeytoall: %T %v", _list, _list)
+		return []any{}
+	}
+
+	result := make([]any, 0, len(list))
+	for _, item := range list {
+		// Try to convert to Dict regardless of original type
+		var dictItem map[string]any
+
+		if mapItem, ok := item.(map[string]any); ok {
+			dictItem = map[string]any(mapItem)
+		} else if di, ok := item.(map[string]any); ok {
+			dictItem = di
+		} else {
+			// For non-dictionary types, we can't add a key, so just preserve the item
+			result = append(result, item)
+			continue
+		}
+
+		// Now that we have a Dict, use Set
+		updatedDict, err := Set(dictItem, key, value)
+		if err != nil {
+			log.Printf("Error setting key %s in addkeytoall: %v", key, err)
+			result = append(result, item) // Add original if error
+		} else {
+			result = append(result, updatedDict)
+		}
+	}
+
+	return result
+}
+
+// incrementCounter increments a named counter in the data and returns the new value
+// If the counter doesn't exist, it starts at 1. If increment is not provided, defaults to 1.
+func incrementCounter(counterName string, data map[string]any, missingKeys *[]string) int {
+	return incrementCounterBy(counterName, 1, data, missingKeys)
+}
+
+// incrementCounterBy increments a named counter by a specific amount and returns the new value
+func incrementCounterBy(counterName string, increment int, data map[string]any, missingKeys *[]string) int {
+	currentValue := 0
+
+	// Get current value if it exists
+	if existingValue := get(counterName, data, &[]string{}); existingValue != nil {
+		switch v := existingValue.(type) {
+		case int:
+			currentValue = v
+		case float64:
+			currentValue = int(v)
+		case string:
+			if parsed, err := strconv.Atoi(v); err == nil {
+				currentValue = parsed
+			}
+		}
+	}
+
+	newValue := currentValue + increment
+
+	// Update the data map directly
+	data[counterName] = newValue
+
+	return newValue
+}
+
+// coalesce returns the first non-nil value from the arguments
+// The first argument (key) is treated as a template variable to look up in data
+// The second argument (fallbackValue) is treated as a literal value to return if the key is missing
+// Example: {{coalesce "optional_key?" 0}} returns the value of optional_key or 0 if nil/missing
+// Example: {{coalesce "optional_key?" "default"}} returns the value of optional_key or "default" if nil/missing
+func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]string) any {
+	// Handle the first argument (key) - try to look it up in data if it's a string
+	if strKey, ok := key.(string); ok {
+		dataValue := get(strKey, data, &[]string{}) // Don't add to missingKeys for coalesce
+		if dataValue != nil {
+			return dataValue
+		}
+	} else if key != nil {
+		// If the key is not a string but is not nil, return it
+		return key
+	}
+
+	// If the key was nil/missing, return the fallback value
+	// Handle the case where Go's template engine converted numeric literals to strings
+	if strFallback, ok := fallbackValue.(string); ok {
+		// Try to parse as number first (same logic as processArgument)
+		if value, err := strconv.ParseFloat(strFallback, 64); err == nil {
+			// Convert float64 that's actually an int back to int
+			if value == float64(int(value)) {
+				return int(value)
+			}
+			return value
+		}
+
+		// Try to parse as boolean
+		if value, err := strconv.ParseBool(strFallback); err == nil {
+			return value
+		}
+
+		// If it's a quoted string, remove quotes and return as string literal
+		if (strings.HasPrefix(strFallback, "\"") && strings.HasSuffix(strFallback, "\"")) ||
+			(strings.HasPrefix(strFallback, "'") && strings.HasSuffix(strFallback, "'")) {
+			return strFallback[1 : len(strFallback)-1]
+		}
+
+		// Return as string if not parseable as number/boolean
+		return strFallback
+	}
+
+	// Return the fallback value as-is for non-string types
+	return fallbackValue
+}
+
+// filter filters a slice to only include items where the specified field matches the given value
+func filter(key string, field string, value any, data map[string]any, missingKeys *[]string) []any {
+	val := get(key, data, missingKeys)
+	if arr, ok := val.([]any); ok {
+		result := make([]any, 0)
+		for _, item := range arr {
+			var fieldVal any
+			if mapVal, ok := item.(map[string]any); ok {
+				fieldVal = mapVal[field]
+			}
+			
+			// Convert both values to the same type for comparison
+			// Handle the case where value comes from template as string but field is numeric
+			if fieldVal != nil && value != nil {
+				if _, ok := fieldVal.(int); ok {
+					if valueStr, ok := value.(string); ok {
+						if valueInt, err := strconv.Atoi(valueStr); err == nil {
+							value = valueInt
+						}
+					}
+				} else if _, ok := fieldVal.(float64); ok {
+					if valueStr, ok := value.(string); ok {
+						if valueFloat, err := strconv.ParseFloat(valueStr, 64); err == nil {
+							value = valueFloat
+						}
+					}
+				}
+			}
+			
+			if reflect.DeepEqual(fieldVal, value) {
+				result = append(result, item)
+			}
+		}
+		return result
+	}
+	return []any{}
+}
