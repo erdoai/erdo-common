@@ -5,9 +5,11 @@ import (
 	"log"
 	"reflect"
 	"regexp"
+	"strconv"
 	"text/template"
 
 	json "github.com/goccy/go-json"
+	"github.com/google/uuid"
 )
 
 // Basic functions that don't require .Data and .MissingKeys
@@ -26,6 +28,11 @@ var basicFuncMap = template.FuncMap{
 	"truncateString":   truncateString,
 	"regexReplace":     regexReplace,
 	"noop":             noop,
+	"genUUID":          genUUID,
+}
+
+func genUUID() string {
+	return uuid.New().String()
 }
 
 func toJSON(v any) string {
@@ -80,8 +87,30 @@ func add(a, b int) int {
 	return a + b
 }
 
-func sub(a, b int) int {
-	return a - b
+func sub(a, b any) int {
+	aInt := convertToIntForArithmetic(a)
+	bInt := convertToIntForArithmetic(b)
+	return aInt - bInt
+}
+
+// convertToIntForArithmetic converts various types to int, returning 0 for invalid types
+func convertToIntForArithmetic(v any) int {
+	switch val := v.(type) {
+	case int:
+		return val
+	case float64:
+		return int(val)
+	case string:
+		if i, err := strconv.Atoi(val); err == nil {
+			return i
+		}
+		return 0
+	case nil:
+		return 0
+	default:
+		// Handle the case where $.MissingKeys is passed instead of a proper value
+		return 0
+	}
 }
 
 func _len(a any) int {

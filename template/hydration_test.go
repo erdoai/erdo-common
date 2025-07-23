@@ -823,7 +823,9 @@ func TestAddkey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := addkey(tt.toObj, tt.key, tt.valueKey, tt.data, tt.missingKeys)
+			// Look up the value from data using valueKey
+			value := get(tt.valueKey, tt.data, tt.missingKeys)
+			result := addkey(tt.toObj, tt.key, value, tt.data, tt.missingKeys)
 
 			if tt.expected == nil {
 				assert.Nil(t, result)
@@ -2619,7 +2621,7 @@ func TestTemplateWithAddkeyFunction(t *testing.T) {
 	}{
 		{
 			name:     "Add key to object",
-			template: "{{addkey \"object\" \"newKey\" \"value\"}}",
+			template: "{{addkey \"object\" \"newKey\" (get \"value\")}}",
 			stateParams: map[string]any{
 				"object": map[string]any{"existingKey": "existingValue"},
 				"value":  "newValue",
@@ -2631,7 +2633,7 @@ func TestTemplateWithAddkeyFunction(t *testing.T) {
 		},
 		{
 			name:     "Add key to empty object",
-			template: "{{addkey \"emptyObject\" \"firstKey\" \"value\"}}",
+			template: "{{addkey \"emptyObject\" \"firstKey\" (get \"value\")}}",
 			stateParams: map[string]any{
 				"emptyObject": map[string]any{},
 				"value":       "someValue",
@@ -2661,7 +2663,7 @@ func TestTemplateWithAddkeyFunction(t *testing.T) {
 
 	// Special test for "Object not found" case
 	t.Run("Object not found", func(t *testing.T) {
-		template := "{{addkey \"nonExistentObject\" \"key\" \"value\"}}"
+		template := "{{addkey \"nonExistentObject\" \"key\" (get \"value\")}}"
 		stateParams := map[string]any{"value": "someValue"}
 
 		result, err := Hydrate(template, &stateParams, nil)
@@ -3056,3 +3058,131 @@ func TestPortedFunctions(t *testing.T) {
 		})
 	}
 }
+
+func TestNestedFunctionWithNilHandling(t *testing.T) {
+	t.Parallel()
+	
+	tests := []struct {
+		name           string
+		template       string
+		stateParams    map[string]any
+		expectedError  bool
+		expectedErrMsg string
+		expected       any
+	}{
+		{
+			name:     "Nested function with missing key should error",
+			template: "{{len (get \"similar_memories\")}}",
+			stateParams: map[string]any{
+				// similar_memories is intentionally missing
+			},
+			expectedError:  true,
+			expectedErrMsg: "info needed for keys", // Changed to match InfoNeededError
+		},
+		{
+			name:     "Nested function with existing empty array",
+			template: "{{len (get \"similar_memories\")}}",
+			stateParams: map[string]any{
+				"similar_memories": []any{},
+			},
+			expected: 0,
+		},
+		{
+			name:     "Nested function with existing array",
+			template: "{{len (get \"similar_memories\")}}",
+			stateParams: map[string]any{
+				"similar_memories": []any{"mem1", "mem2", "mem3"},
+			},
+			expected: 3,
+		},
+		{
+			name:     "Complex nested function with missing inner key",
+			template: "{{toJSON (mapToDict \"missing_list\" \"id\")}}",
+			stateParams: map[string]any{
+				// missing_list is intentionally missing
+			},
+			expected: "[]", // mapToDict returns empty array for missing keys
+		},
+		{
+			name:     "Nested function with nil value in data",
+			template: "{{len (get \"null_field\")}}",
+			stateParams: map[string]any{
+				"null_field": nil,
+			},
+			expected: 0, // get returns nil for nil values, len of nil is 0
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			
+			result, err := Hydrate(tt.template, &tt.stateParams, nil)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedErrMsg)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGreaterThanConditionWithMissingField(t *testing.T) {
+	t.Parallel()
+	
+	// This test simulates the original panic scenario
+	tests := []struct {
+		name           string
+		template       string
+		stateParams    map[string]any
+		expectedError  bool
+		expectedErrMsg string
+		expected       any
+	}{
+		{
+			name:     "GreaterThan condition with missing field",
+			template: "{{gt (len (get \"similar_memories\")) 0}}",
+			stateParams: map[string]any{
+				// similar_memories is missing, which was causing the panic
+			},
+			expectedError:  true,
+			expectedErrMsg: "info needed for keys", // InfoNeededError is thrown
+		},
+		{
+			name:     "GreaterThan condition with empty array",
+			template: "{{gt (len (get \"similar_memories\")) 0}}",
+			stateParams: map[string]any{
+				"similar_memories": []any{},
+			},
+			expected: false,
+		},
+		{
+			name:     "GreaterThan condition with populated array",
+			template: "{{gt (len (get \"similar_memories\")) 0}}",
+			stateParams: map[string]any{
+				"similar_memories": []any{"mem1", "mem2"},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			
+			result, err := Hydrate(tt.template, &tt.stateParams, nil)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedErrMsg)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+

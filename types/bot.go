@@ -227,7 +227,7 @@ type AgentDiscovery struct {
 
 // ExecutionMode represents execution mode configuration
 type ExecutionMode struct {
-	Mode        string               `json:"mode"`
+	Mode        ExecutionModeType    `json:"mode"`
 	Data        any                  `json:"data"`
 	IfCondition *ConditionDefinition `json:"if_condition"`
 }
@@ -722,7 +722,7 @@ type APIParameterInterpreter struct {
 
 // APIExecutionMode is an Encore-API-compatible version of ExecutionMode
 type APIExecutionMode struct {
-	Mode        string                  `json:"mode"`
+	Mode        ExecutionModeType       `json:"mode"`
 	Data        json.RawMessage         `json:"data"`
 	IfCondition *APIConditionDefinition `json:"if_condition,omitempty"`
 }

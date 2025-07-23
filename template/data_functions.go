@@ -27,6 +27,7 @@ var dataFuncMap = template.FuncMap{
 	"addkey":                       addkey,
 	"removekey":                    removekey,
 	"mapToDict":                    mapToDict,
+	"mapToArray":                   mapToArray,
 	"addkeytoall":                  addkeytoall,
 	"incrementCounter":             incrementCounter,
 	"incrementCounterBy":           incrementCounterBy,
@@ -34,7 +35,7 @@ var dataFuncMap = template.FuncMap{
 	"filter":                       filter,
 }
 
-func addkey(toObj string, key string, valueKey string, data map[string]any, missingKeys *[]string) map[string]any {
+func addkey(toObj string, key string, value any, data map[string]any, missingKeys *[]string) map[string]any {
 	_obj := get(toObj, data, missingKeys)
 	obj, ok := _obj.(map[string]any)
 	if !ok {
@@ -42,11 +43,9 @@ func addkey(toObj string, key string, valueKey string, data map[string]any, miss
 		return nil
 	}
 
-	value := get(valueKey, data, missingKeys)
-
 	result, err := Set(obj, key, value)
 	if err != nil {
-		log.Printf("Error setting key %v to valueKey %v in addkey: %v", key, valueKey, err)
+		log.Printf("Error setting key %v to value %v in addkey: %v", key, value, err)
 		return obj
 	}
 
@@ -232,15 +231,24 @@ func dedupeBy(array string, field string, data map[string]any, missingKeys *[]st
 }
 
 // find searches for an item in a slice where the specified field matches the target value
-func find(arrayKey string, fieldKey string, targetKey string, data map[string]any, missingKeys *[]string) any {
+func find(arrayKey string, fieldKey string, targetKey any, data map[string]any, missingKeys *[]string) any {
 	_items := get(arrayKey, data, missingKeys)
 	if _items == nil {
 		return nil
 	}
 
-	targetValue := get(targetKey, data, missingKeys)
-	if targetValue == nil {
-		return nil
+	// Handle targetKey which can be either a string key to look up or an actual value
+	var targetValue any
+	if targetKeyStr, ok := targetKey.(string); ok {
+		// It's a string, try to look it up in data
+		targetValue = get(targetKeyStr, data, missingKeys)
+		if targetValue == nil {
+			// If not found in data, use the string itself as the target value
+			targetValue = targetKeyStr
+		}
+	} else {
+		// It's already a resolved value
+		targetValue = targetKey
 	}
 
 	targetStr := fmt.Sprintf("%v", targetValue)
@@ -336,13 +344,43 @@ func getAtIndex(array string, index any, data map[string]any, missingKeys *[]str
 		return nil
 	}
 
+	// Resolve the index value
+	var indexValue int
 	switch v := index.(type) {
 	case int:
-		return items[v]
+		indexValue = v
 	case string:
+		// First try to parse as integer
 		if indexInt, err := strconv.Atoi(v); err == nil {
-			return items[indexInt]
+			indexValue = indexInt
+		} else {
+			// If not an integer, treat as a path and resolve it
+			resolvedIndex := get(v, data, missingKeys)
+			if resolvedIndex != nil {
+				switch idx := resolvedIndex.(type) {
+				case int:
+					indexValue = idx
+				case float64:
+					indexValue = int(idx)
+				case string:
+					if parsed, err := strconv.Atoi(idx); err == nil {
+						indexValue = parsed
+					} else {
+						return nil
+					}
+				default:
+					return nil
+				}
+			} else {
+				return nil
+			}
 		}
+	default:
+		return nil
+	}
+
+	if indexValue >= 0 && indexValue < len(items) {
+		return items[indexValue]
 	}
 
 	return nil
@@ -362,7 +400,16 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 	case nil:
 		slice1 = []any{}
 	default:
-		slice1 = []any{v}
+		// Handle any slice type using reflection as fallback
+		rv := reflect.ValueOf(items1)
+		if rv.Kind() == reflect.Slice {
+			slice1 = make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				slice1[i] = rv.Index(i).Interface()
+			}
+		} else {
+			slice1 = []any{v}
+		}
 	}
 
 	// Convert second array
@@ -372,7 +419,16 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 	case nil:
 		slice2 = []any{}
 	default:
-		slice2 = []any{v}
+		// Handle any slice type using reflection as fallback
+		rv := reflect.ValueOf(items2)
+		if rv.Kind() == reflect.Slice {
+			slice2 = make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				slice2[i] = rv.Index(i).Interface()
+			}
+		} else {
+			slice2 = []any{v}
+		}
 	}
 
 	// Combine slices
@@ -568,7 +624,7 @@ func concat(sep string, key string, property string, data any, missingKeys *[]st
 	escapedProperty := template.JSEscapeString(property)
 	escapedKey := template.JSEscapeString(key)
 	funcCall := fmt.Sprintf("concat \"%s\" \"%s\" \"%s\"", escapedSep, escapedKey, escapedProperty)
-	original := fmt.Sprintf("{{%s}}", appendDataParams(funcCall))
+	original := fmt.Sprintf("{{%s $.Data $.MissingKeys}}", funcCall)
 
 	items := get(key, data, missingKeys)
 	if items == nil {
@@ -585,8 +641,17 @@ func concat(sep string, key string, property string, data any, missingKeys *[]st
 	case []any:
 		itemsSlice = v
 	default:
-		*missingKeys = append(*missingKeys, escapedKey)
-		return original
+		// Handle any slice type using reflection as fallback
+		rv := reflect.ValueOf(items)
+		if rv.Kind() == reflect.Slice {
+			itemsSlice = make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				itemsSlice[i] = rv.Index(i).Interface()
+			}
+		} else {
+			*missingKeys = append(*missingKeys, escapedKey)
+			return original
+		}
 	}
 
 	itemsStrs := []string{}
@@ -745,7 +810,7 @@ func filter(key string, field string, value any, data map[string]any, missingKey
 			if mapVal, ok := item.(map[string]any); ok {
 				fieldVal = mapVal[field]
 			}
-			
+
 			// Convert both values to the same type for comparison
 			// Handle the case where value comes from template as string but field is numeric
 			if fieldVal != nil && value != nil {
@@ -763,7 +828,7 @@ func filter(key string, field string, value any, data map[string]any, missingKey
 					}
 				}
 			}
-			
+
 			if reflect.DeepEqual(fieldVal, value) {
 				result = append(result, item)
 			}
@@ -771,4 +836,39 @@ func filter(key string, field string, value any, data map[string]any, missingKey
 		return result
 	}
 	return []any{}
+}
+
+// mapToArray converts a map to an array of objects with "key" and "value" fields
+// Example: {"old_id_1": "new_id_1", "old_id_2": "new_id_2"} becomes
+// [{"key": "old_id_1", "value": "new_id_1"}, {"key": "old_id_2", "value": "new_id_2"}]
+func mapToArray(mapKey string, data map[string]any, missingKeys *[]string) []map[string]any {
+	_map := get(mapKey, data, missingKeys)
+	if _map == nil {
+		// Remove the key from missingKeys if it was added
+		// This is because we want to return an empty array for non-existent maps
+		// rather than treating it as a missing key
+		for i, key := range *missingKeys {
+			if key == mapKey {
+				*missingKeys = append((*missingKeys)[:i], (*missingKeys)[i+1:]...)
+				break
+			}
+		}
+		return []map[string]any{}
+	}
+
+	mapVal, ok := _map.(map[string]any)
+	if !ok {
+		log.Printf("Error casting to map in mapToArray: %T %v", _map, _map)
+		return []map[string]any{}
+	}
+
+	result := make([]map[string]any, 0, len(mapVal))
+	for key, value := range mapVal {
+		result = append(result, map[string]any{
+			"key":   key,
+			"value": value,
+		})
+	}
+
+	return result
 }

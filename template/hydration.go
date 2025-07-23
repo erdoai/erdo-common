@@ -102,8 +102,19 @@ func Hydrate(value any, stateParameters *map[string]any, parameterHydrationBehav
 	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, complex64, complex128:
 		return v, nil
 	default:
-		log.Printf("!! unable to hydrate unknown type %T", v)
-		return v, nil
+		// Handle any other slice type using reflection as fallback
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Slice {
+			// Convert any slice type to []any
+			anySlice := make([]any, rv.Len())
+			for i := 0; i < rv.Len(); i++ {
+				anySlice[i] = rv.Index(i).Interface()
+			}
+			return hydrateSlice(anySlice, data, parameterHydrationBehaviour)
+		}
+		// For non-slice types, just return as-is
+		log.Printf("!! unable to hydrate unknown type %T", value)
+		return value, nil
 	}
 }
 
@@ -157,22 +168,24 @@ func removeDataPrefix(str string) string {
 	return str
 }
 
-// containsDataSuffix checks if a string contains .Data or $.Data suffix
+// containsDataSuffix checks if a string already has .Data and .MissingKeys parameters at the end
 func containsDataSuffix(str string) bool {
-	return strings.Contains(str, " .Data") || strings.Contains(str, " $.Data")
+	// We need to check if the function already has both .Data and .MissingKeys at the END
+	// not inside nested function calls
+	trimmed := strings.TrimSpace(str)
+
+	// Check if it ends with the pattern: ... .Data .MissingKeys or ... $.Data $.MissingKeys
+	// This regex will match if the string ends with either pattern (with optional whitespace)
+	pattern1 := `\.Data\s+\.MissingKeys\s*$`
+	pattern2 := `\$\.Data\s+\$\.MissingKeys\s*$`
+	matched1, _ := regexp.MatchString(pattern1, trimmed)
+	matched2, _ := regexp.MatchString(pattern2, trimmed)
+	return matched1 || matched2
 }
 
 // containsMissingKeysSuffix checks if a string contains .MissingKeys or $.MissingKeys suffix
 func containsMissingKeysSuffix(str string) bool {
 	return strings.Contains(str, ".MissingKeys") || strings.Contains(str, "$.MissingKeys")
-}
-
-// appendDataParams adds .Data and .MissingKeys parameters to a function call if not already present
-func appendDataParams(funcCall string) string {
-	if containsDataSuffix(funcCall) && containsMissingKeysSuffix(funcCall) {
-		return funcCall
-	}
-	return funcCall + " $.Data $.MissingKeys"
 }
 
 // ParseTemplateKey creates a Key struct from a string, handling optional parameters
@@ -433,96 +446,92 @@ func parseTemplate(input string) (string, error) {
 // processNestedFunctionCalls recursively processes function calls and ensures that
 // all functions have the necessary .Data and .MissingKeys parameters
 func processNestedFunctionCalls(funcCall string) string {
-
-	// Extract the function name
-	parts := strings.Fields(funcCall)
-	if len(parts) == 0 {
+	// Parse the function call to get structured fields
+	fields := parseQuotedFields(funcCall)
+	if len(fields) == 0 {
 		return funcCall
 	}
 
-	funcName := parts[0]
+	funcName := fields[0]
 
-	// Process all arguments in the function call
-	var result strings.Builder
-	result.WriteString(funcName)
+	// Process each field
+	var processedFields []string
+	processedFields = append(processedFields, funcName)
 
-	// Parse the rest of the function call to handle all arguments
-	rest := funcCall[len(funcName):]
-	rest = strings.TrimSpace(rest)
+	for i := 1; i < len(fields); i++ {
+		field := fields[i]
 
-	// Process each argument
-	i := 0
-	for i < len(rest) {
-		ch := rest[i]
-
-		if ch == '(' {
-			// Found a nested function call
-			result.WriteByte(' ')
-			result.WriteByte('(')
-			i++ // skip the opening parenthesis
-
-			// Find the matching closing parenthesis
-			parenCount := 1
-			start := i
-			for i < len(rest) && parenCount > 0 {
-				if rest[i] == '(' {
-					parenCount++
-				} else if rest[i] == ')' {
-					parenCount--
-				}
-				i++
-			}
-
-			if parenCount == 0 {
-				// Extract and process the nested function
-				nestedFunc := rest[start : i-1]
-				processedNested := processNestedFunctionCalls(nestedFunc)
-				result.WriteString(processedNested)
-				result.WriteByte(')')
-			} else {
-				// Malformed, just return original
-				return funcCall
-			}
-		} else if ch == '"' || ch == '\'' {
-			// Handle quoted strings
-			result.WriteByte(' ')
-			quote := ch
-			result.WriteByte(quote)
-			i++
-			for i < len(rest) && rest[i] != quote {
-				if rest[i] == '\\' && i+1 < len(rest) {
-					result.WriteByte(rest[i])
-					i++
-				}
-				result.WriteByte(rest[i])
-				i++
-			}
-			if i < len(rest) {
-				result.WriteByte(rest[i]) // closing quote
-				i++
-			}
-		} else if ch == ' ' || ch == '\t' || ch == '\n' {
-			// Skip whitespace
-			i++
+		// Check if this field is a nested function call
+		if strings.HasPrefix(field, "(") && strings.HasSuffix(field, ")") {
+			// Extract the nested function
+			nestedFunc := field[1 : len(field)-1]
+			// Process the nested function recursively
+			processedNested := processNestedFunctionCalls(nestedFunc)
+			// Re-wrap in parentheses
+			processedFields = append(processedFields, "("+processedNested+")")
 		} else {
-			// Regular argument
-			result.WriteByte(' ')
-			start := i
-			for i < len(rest) && rest[i] != ' ' && rest[i] != '(' && rest[i] != ')' {
-				i++
-			}
-			result.WriteString(rest[start:i])
+			// Regular field, keep as-is
+			processedFields = append(processedFields, field)
 		}
 	}
 
-	finalResult := result.String()
+	// Reconstruct the function call
+	finalResult := strings.Join(processedFields, " ")
 
-	// Add .Data and .MissingKeys if the function requires them and they're not already present
+	// Check if this function needs .Data and .MissingKeys added
 	_, requiresData := dataFuncMap[funcName]
-	if requiresData && !containsDataSuffix(finalResult) {
-		finalResult = appendDataParams(finalResult)
-	}
+	if requiresData {
+		// Check if the function already has the required parameters
+		hasMissingKeys := false
+		hasData := false
 
+		// Check the last few fields for .Data and .MissingKeys
+		for i := len(processedFields) - 1; i >= 0 && i >= len(processedFields)-2; i-- {
+			field := processedFields[i]
+			if field == ".MissingKeys" || field == "$.MissingKeys" {
+				hasMissingKeys = true
+			}
+			if field == ".Data" || field == "$.Data" {
+				hasData = true
+			}
+		}
+
+		if !hasMissingKeys {
+			// Special handling for get with nested function as data parameter
+			if funcName == "get" && len(processedFields) >= 2 {
+				// Check if the second parameter is a nested function
+				hasNestedDataParam := false
+				for i := 1; i < len(processedFields); i++ {
+					if strings.HasPrefix(processedFields[i], "(") && strings.HasSuffix(processedFields[i], ")") {
+						// Found a nested function parameter
+						if i == 2 && funcName == "get" {
+							// This is the second parameter to get, which provides the data
+							hasNestedDataParam = true
+							break
+						}
+					}
+				}
+
+				if hasNestedDataParam {
+					// The second parameter is a nested function that provides the data
+					// Only add .MissingKeys
+					finalResult = finalResult + " $.MissingKeys"
+				} else if !hasData {
+					// Normal case - add both if not already present
+					finalResult = finalResult + " $.Data $.MissingKeys"
+				} else {
+					// Has data but not missingKeys
+					finalResult = finalResult + " $.MissingKeys"
+				}
+			} else if !hasData {
+				// For all other data functions, add both parameters if not present
+				finalResult = finalResult + " $.Data $.MissingKeys"
+			} else {
+				// Has data but not missingKeys
+				finalResult = finalResult + " $.MissingKeys"
+			}
+		}
+	}
 	return finalResult
 }
 
@@ -533,14 +542,14 @@ func processReservedWordWithNestedFunctions(statement string) string {
 	// Parse parentheses manually to handle nested function calls correctly
 	result := strings.Builder{}
 	i := 0
-	
+
 	for i < len(statement) {
 		if statement[i] == '(' {
 			// Find the matching closing parenthesis
 			parenCount := 1
 			start := i
 			i++ // skip the opening parenthesis
-			
+
 			for i < len(statement) && parenCount > 0 {
 				if statement[i] == '(' {
 					parenCount++
@@ -549,11 +558,11 @@ func processReservedWordWithNestedFunctions(statement string) string {
 				}
 				i++
 			}
-			
+
 			if parenCount == 0 {
 				// Extract the content within parentheses
 				inner := strings.TrimSpace(statement[start+1 : i-1])
-				
+
 				// Check if this looks like a function call
 				if strings.Contains(inner, " ") {
 					parts := strings.Fields(inner)
@@ -571,7 +580,7 @@ func processReservedWordWithNestedFunctions(statement string) string {
 						continue
 					}
 				}
-				
+
 				// Not a function call, keep original
 				result.WriteString(statement[start:i])
 			} else {
@@ -735,9 +744,10 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 		// Try to process as a single function call (optimization path)
 		if value, err := processSingleFunction(key.Key, *data, &missingKeys); err == nil {
 			return value, nil
+		} else {
+			// Single function processing failed, falling back to full template parsing
+			// This is normal for complex nested function calls
 		}
-		// Single function processing failed, falling back to full template parsing
-		// This is normal for complex nested function calls
 	}
 
 	// Find all template keys before processing
@@ -789,11 +799,13 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 
 	// Execute the template
 	var result bytes.Buffer
-	err = t.Execute(&result, struct {
+	templateData := struct {
 		Data           map[string]any
 		MissingKeys    *[]string
 		KeyDefinitions KeyDefinitions
-	}{Data: *data, MissingKeys: &missingKeys, KeyDefinitions: keyDefinitions})
+	}{Data: *data, MissingKeys: &missingKeys, KeyDefinitions: keyDefinitions}
+
+	err = t.Execute(&result, templateData)
 
 	// Check for missing key errors
 	if err != nil {
@@ -970,6 +982,10 @@ func processNestedFunction(funcCall string, data map[string]any, missingKeys *[]
 	fnType := fnValue.Type()
 
 	if fnType.NumIn() == 1 {
+		// Check if innerResult is nil to prevent panic
+		if innerResult == nil {
+			return nil, true, fmt.Errorf("cannot call function %s with nil argument from inner function %s", outerFunc, innerFunc)
+		}
 		callArgs := []reflect.Value{reflect.ValueOf(innerResult)}
 		results := fnValue.Call(callArgs)
 		return processResults(results), true, nil
@@ -979,11 +995,13 @@ func processNestedFunction(funcCall string, data map[string]any, missingKeys *[]
 }
 
 // parseQuotedFields parses a string into fields, respecting quoted strings (both single and double quotes)
+// and parentheses for nested function calls
 func parseQuotedFields(s string) []string {
 	var fields []string
 	var current strings.Builder
 	inQuotes := false
 	quoteChar := byte(0)
+	parenDepth := 0
 
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
@@ -993,8 +1011,14 @@ func parseQuotedFields(s string) []string {
 				inQuotes = true
 				quoteChar = ch
 				current.WriteByte(ch)
-			} else if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
-				// Whitespace outside quotes - end current field
+			} else if ch == '(' {
+				parenDepth++
+				current.WriteByte(ch)
+			} else if ch == ')' {
+				parenDepth--
+				current.WriteByte(ch)
+			} else if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') && parenDepth == 0 {
+				// Whitespace outside quotes and parentheses - end current field
 				if current.Len() > 0 {
 					fields = append(fields, current.String())
 					current.Reset()
@@ -1035,8 +1059,22 @@ func parseFunctionCall(funcCall string, data map[string]any, missingKeys *[]stri
 	args := parts[1:]
 	processedArgs := make([]any, len(args))
 
+	// Process each argument, evaluating nested functions recursively
 	for i, arg := range args {
-		processedArgs[i] = processArgument(arg, data, missingKeys)
+		// Check if this argument is a nested function call
+		if strings.HasPrefix(arg, "(") && strings.HasSuffix(arg, ")") {
+			// Extract the nested function and evaluate it
+			nestedFunc := arg[1 : len(arg)-1]
+			if result, err := processSingleFunction(nestedFunc, data, missingKeys); err == nil {
+				processedArgs[i] = result
+			} else {
+				// If evaluation fails, pass the string as-is
+				processedArgs[i] = arg
+			}
+		} else {
+			// Process non-function arguments normally
+			processedArgs[i] = processArgument(arg, data, missingKeys)
+		}
 	}
 
 	return funcName, processedArgs, nil
@@ -1056,6 +1094,22 @@ func interpretEscapeSequences(s string) string {
 
 // processArgument processes a single function argument, handling data references and quote stripping
 func processArgument(arg string, data map[string]any, missingKeys *[]string) any {
+	// Note: Nested function calls are now handled in parseFunctionCall
+	// This function only handles non-function arguments
+
+	// Check if this is a nested function call that wasn't processed yet
+	// (This can happen when processArgument is called directly from tests)
+	if strings.HasPrefix(arg, "(") && strings.HasSuffix(arg, ")") {
+		// Extract the function call and process it
+		funcCall := arg[1 : len(arg)-1]
+		if value, err := processSingleFunction(funcCall, data, missingKeys); err == nil {
+			return value
+		}
+		// If processing failed, return the original
+		return arg
+	}
+
+	// Handle quoted strings
 	if strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"") {
 		// Remove quotes and interpret escape sequences
 		unquoted := strings.Trim(arg, "\"")
@@ -1073,6 +1127,14 @@ func processArgument(arg string, data map[string]any, missingKeys *[]string) any
 			path = strings.TrimPrefix(clean, ".Data.")
 		}
 		return get(path, data, missingKeys)
+	}
+
+	// Handle special parameters
+	if clean == ".Data" || clean == "$.Data" {
+		return data
+	}
+	if clean == ".MissingKeys" || clean == "$.MissingKeys" {
+		return missingKeys
 	}
 
 	return clean
@@ -1127,9 +1189,31 @@ func prepareBasicFunctionArgs(funcName string, processedArgs []any, fnType refle
 
 // prepareDataFunctionArgs prepares arguments for data functions (need data/missingKeys)
 func prepareDataFunctionArgs(funcName string, processedArgs []any, fnType reflect.Type, data map[string]any, missingKeys *[]string) ([]reflect.Value, error) {
-	expectedArgCount := len(processedArgs) + 2 // +2 for data and missingKeys
 	if fnType.NumIn() < 2 {
 		return nil, fmt.Errorf("function %s must have data and missingKeys parameters", funcName)
+	}
+
+	// Check if the last two args are already data and missingKeys
+	hasDataAndMissingKeys := false
+	if len(processedArgs) >= 2 {
+		lastArg := processedArgs[len(processedArgs)-1]
+		secondLastArg := processedArgs[len(processedArgs)-2]
+
+		// Check if these are the data and missingKeys parameters
+		if _, isDataMap := secondLastArg.(map[string]any); isDataMap {
+			if _, isMissingKeys := lastArg.(*[]string); isMissingKeys {
+				hasDataAndMissingKeys = true
+			}
+		}
+	}
+
+	var expectedArgCount int
+	if hasDataAndMissingKeys {
+		// Data and missingKeys are already in processedArgs
+		expectedArgCount = len(processedArgs)
+	} else {
+		// Need to add data and missingKeys
+		expectedArgCount = len(processedArgs) + 2
 	}
 
 	if fnType.NumIn() != expectedArgCount {
@@ -1137,22 +1221,45 @@ func prepareDataFunctionArgs(funcName string, processedArgs []any, fnType reflec
 	}
 
 	callArgs := make([]reflect.Value, fnType.NumIn())
-	for i := 0; i < len(processedArgs); i++ {
-		arg, err := convertArgument(processedArgs[i], fnType.In(i), i)
-		if err != nil {
-			return nil, err
-		}
-		callArgs[i] = arg
-	}
 
-	callArgs[len(processedArgs)] = reflect.ValueOf(data)
-	callArgs[len(processedArgs)+1] = reflect.ValueOf(missingKeys)
+	if hasDataAndMissingKeys {
+		// All args are already in processedArgs
+		for i := 0; i < len(processedArgs); i++ {
+			arg, err := convertArgument(processedArgs[i], fnType.In(i), i)
+			if err != nil {
+				return nil, err
+			}
+			callArgs[i] = arg
+		}
+	} else {
+		// Need to add data and missingKeys
+		for i := 0; i < len(processedArgs); i++ {
+			arg, err := convertArgument(processedArgs[i], fnType.In(i), i)
+			if err != nil {
+				return nil, err
+			}
+			callArgs[i] = arg
+		}
+		callArgs[len(processedArgs)] = reflect.ValueOf(data)
+		callArgs[len(processedArgs)+1] = reflect.ValueOf(missingKeys)
+	}
 
 	return callArgs, nil
 }
 
 // convertArgument converts a processed argument to the expected type using reflection
 func convertArgument(paramValue any, paramType reflect.Type, argIndex int) (reflect.Value, error) {
+	// Handle nil values
+	if paramValue == nil {
+		// For nullable types like interfaces, pointers, slices, maps, nil is valid
+		switch paramType.Kind() {
+		case reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map:
+			return reflect.Zero(paramType), nil
+		default:
+			return reflect.Value{}, fmt.Errorf("cannot convert nil to non-nullable type %v for argument %d", paramType, argIndex)
+		}
+	}
+
 	switch paramType.Kind() {
 	case reflect.String:
 		if strVal, ok := paramValue.(string); ok {
