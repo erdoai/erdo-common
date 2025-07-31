@@ -16,6 +16,7 @@ type Bot struct {
 	Description     string     `json:"description"`
 	Code            string     `json:"code"`
 	FilePath        string     `json:"file_path"`
+	Key             *string    `json:"key,omitempty"`
 	Persona         *string    `json:"persona"`
 	RunningMessage  *string    `json:"running_message"`
 	FinishedMessage *string    `json:"finished_message"`
@@ -623,6 +624,9 @@ const (
 
 	// Dataset events
 	InvocationEventTypeDatasetCreated InvocationEventType = "dataset created"
+	
+	// Log events
+	InvocationEventTypeLog InvocationEventType = "log"
 )
 
 // Status represents the status of an action or invocation operation

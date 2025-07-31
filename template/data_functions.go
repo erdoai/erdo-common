@@ -801,7 +801,8 @@ func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]st
 }
 
 // filter filters a slice to only include items where the specified field matches the given value
-func filter(key string, field string, value any, data map[string]any, missingKeys *[]string) []any {
+// Supports operators: "eq" (equals), "in" (value in list)
+func filter(key string, operator string, field string, value any, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		result := make([]any, 0)
@@ -811,25 +812,43 @@ func filter(key string, field string, value any, data map[string]any, missingKey
 				fieldVal = mapVal[field]
 			}
 
-			// Convert both values to the same type for comparison
-			// Handle the case where value comes from template as string but field is numeric
-			if fieldVal != nil && value != nil {
-				if _, ok := fieldVal.(int); ok {
-					if valueStr, ok := value.(string); ok {
-						if valueInt, err := strconv.Atoi(valueStr); err == nil {
-							value = valueInt
+			var matches bool
+			switch operator {
+			case "eq":
+				// Convert both values to the same type for comparison
+				// Handle the case where value comes from template as string but field is numeric
+				if fieldVal != nil && value != nil {
+					if _, ok := fieldVal.(int); ok {
+						if valueStr, ok := value.(string); ok {
+							if valueInt, err := strconv.Atoi(valueStr); err == nil {
+								value = valueInt
+							}
 						}
-					}
-				} else if _, ok := fieldVal.(float64); ok {
-					if valueStr, ok := value.(string); ok {
-						if valueFloat, err := strconv.ParseFloat(valueStr, 64); err == nil {
-							value = valueFloat
+					} else if _, ok := fieldVal.(float64); ok {
+						if valueStr, ok := value.(string); ok {
+							if valueFloat, err := strconv.ParseFloat(valueStr, 64); err == nil {
+								value = valueFloat
+							}
 						}
 					}
 				}
+				matches = reflect.DeepEqual(fieldVal, value)
+			case "in":
+				// Check if fieldVal is in the value list
+				if valueList, ok := value.([]any); ok {
+					for _, listItem := range valueList {
+						if reflect.DeepEqual(fieldVal, listItem) {
+							matches = true
+							break
+						}
+					}
+				}
+			default:
+				// Default to equals for unknown operators
+				matches = reflect.DeepEqual(fieldVal, value)
 			}
 
-			if reflect.DeepEqual(fieldVal, value) {
+			if matches {
 				result = append(result, item)
 			}
 		}

@@ -29,6 +29,7 @@ var basicFuncMap = template.FuncMap{
 	"regexReplace":     regexReplace,
 	"noop":             noop,
 	"genUUID":          genUUID,
+	"list":             list,
 }
 
 func genUUID() string {
@@ -213,4 +214,10 @@ func truncateString(value any, n int) string {
 // Useful for whitespace removal in templates where you want {{- noop}} syntax
 func noop() string {
 	return ""
+}
+
+// list creates a slice from the given arguments
+// Usage: {{list "item1" "item2" "item3"}} returns []any{"item1", "item2", "item3"}
+func list(args ...any) []any {
+	return args
 }
