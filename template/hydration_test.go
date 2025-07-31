@@ -509,34 +509,34 @@ func TestComplexNestedFunctionInIf(t *testing.T) {
 			expected: "Both conditions met",
 		},
 		{
-			name:           "Nested coalesce in lt function - should not duplicate params",
-			template:       `{{lt (coalesce "tool_usage_loops?" 0) (sub (get "max_tool_calls") 1)}}`,
-			stateParams:    map[string]any{
+			name:     "Nested coalesce in lt function - should not duplicate params",
+			template: `{{lt (coalesce "tool_usage_loops?" 0) (sub (get "max_tool_calls") 1)}}`,
+			stateParams: map[string]any{
 				"max_tool_calls": 5,
 			},
 			expected: "true",
 		},
 		{
-			name:           "Complex nested function with missing key - should handle gracefully",
-			template:       `{{if ge (coalesce "tool_usage_loops?" 0) (sub (coalesce "max_tool_calls" 5) 1)}}true{{else}}false{{end}}`,
-			stateParams:    map[string]any{
+			name:        "Complex nested function with missing key - should handle gracefully",
+			template:    `{{if ge (coalesce "tool_usage_loops?" 0) (sub (coalesce "max_tool_calls" 5) 1)}}true{{else}}false{{end}}`,
+			stateParams: map[string]any{
 				// max_tool_calls is missing - this should use default fallback of 5
 			},
-			expectedError:  false,
-			expected:       "false", // Should evaluate to false: 0 >= (5-1) = 0 >= 4 = false
+			expectedError: false,
+			expected:      "false", // Should evaluate to false: 0 >= (5-1) = 0 >= 4 = false
 		},
 		{
-			name:           "Complex nested function with present key - should work correctly",
-			template:       `{{if ge (coalesce "tool_usage_loops?" 0) (sub (coalesce "max_tool_calls" 5) 1)}}true{{else}}false{{end}}`,
-			stateParams:    map[string]any{
+			name:     "Complex nested function with present key - should work correctly",
+			template: `{{if ge (coalesce "tool_usage_loops?" 0) (sub (coalesce "max_tool_calls" 5) 1)}}true{{else}}false{{end}}`,
+			stateParams: map[string]any{
 				"max_tool_calls": 5,
 			},
 			expected: "false", // 0 >= (5-1) = 0 >= 4 = false
 		},
 		{
-			name:           "Complex nested function with both keys present",
-			template:       `{{if ge (coalesce "tool_usage_loops?" 0) (sub (coalesce "max_tool_calls" 5) 1)}}true{{else}}false{{end}}`,
-			stateParams:    map[string]any{
+			name:     "Complex nested function with both keys present",
+			template: `{{if ge (coalesce "tool_usage_loops?" 0) (sub (coalesce "max_tool_calls" 5) 1)}}true{{else}}false{{end}}`,
+			stateParams: map[string]any{
 				"tool_usage_loops": 4,
 				"max_tool_calls":   5,
 			},
@@ -3028,8 +3028,7 @@ func TestCoalesceOriginalErrorScenario(t *testing.T) {
 	}
 }
 
-
-func TestPortedFunctions(t *testing.T) {
+func TestFilterFunction(t *testing.T) {
 	data := map[string]any{
 		"items": []any{
 			map[string]any{"name": "alice", "age": 30},
@@ -3045,7 +3044,7 @@ func TestPortedFunctions(t *testing.T) {
 	}{
 		{
 			name:     "filter function",
-			template: `{{filter "items" "age" 30}}`,
+			template: `{{filter "items" "age" "eq" 30}}`,
 			expected: "[map[age:30 name:alice] map[age:30 name:charlie]]",
 		},
 	}
@@ -3061,7 +3060,7 @@ func TestPortedFunctions(t *testing.T) {
 
 func TestNestedFunctionWithNilHandling(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
 		name           string
 		template       string
@@ -3071,8 +3070,8 @@ func TestNestedFunctionWithNilHandling(t *testing.T) {
 		expected       any
 	}{
 		{
-			name:     "Nested function with missing key should error",
-			template: "{{len (get \"similar_memories\")}}",
+			name:        "Nested function with missing key should error",
+			template:    "{{len (get \"similar_memories\")}}",
 			stateParams: map[string]any{
 				// similar_memories is intentionally missing
 			},
@@ -3096,8 +3095,8 @@ func TestNestedFunctionWithNilHandling(t *testing.T) {
 			expected: 3,
 		},
 		{
-			name:     "Complex nested function with missing inner key",
-			template: "{{toJSON (mapToDict \"missing_list\" \"id\")}}",
+			name:        "Complex nested function with missing inner key",
+			template:    "{{toJSON (mapToDict \"missing_list\" \"id\")}}",
 			stateParams: map[string]any{
 				// missing_list is intentionally missing
 			},
@@ -3116,7 +3115,7 @@ func TestNestedFunctionWithNilHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result, err := Hydrate(tt.template, &tt.stateParams, nil)
 
 			if tt.expectedError {
@@ -3132,7 +3131,7 @@ func TestNestedFunctionWithNilHandling(t *testing.T) {
 
 func TestGreaterThanConditionWithMissingField(t *testing.T) {
 	t.Parallel()
-	
+
 	// This test simulates the original panic scenario
 	tests := []struct {
 		name           string
@@ -3143,8 +3142,8 @@ func TestGreaterThanConditionWithMissingField(t *testing.T) {
 		expected       any
 	}{
 		{
-			name:     "GreaterThan condition with missing field",
-			template: "{{gt (len (get \"similar_memories\")) 0}}",
+			name:        "GreaterThan condition with missing field",
+			template:    "{{gt (len (get \"similar_memories\")) 0}}",
 			stateParams: map[string]any{
 				// similar_memories is missing, which was causing the panic
 			},
@@ -3172,7 +3171,7 @@ func TestGreaterThanConditionWithMissingField(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			
+
 			result, err := Hydrate(tt.template, &tt.stateParams, nil)
 
 			if tt.expectedError {
@@ -3185,4 +3184,3 @@ func TestGreaterThanConditionWithMissingField(t *testing.T) {
 		})
 	}
 }
-

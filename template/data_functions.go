@@ -802,7 +802,7 @@ func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]st
 
 // filter filters a slice to only include items where the specified field matches the given value
 // Supports operators: "eq" (equals), "in" (value in list)
-func filter(key string, operator string, field string, value any, data map[string]any, missingKeys *[]string) []any {
+func filter(key string, field string, operator string, value any, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
 		result := make([]any, 0)
