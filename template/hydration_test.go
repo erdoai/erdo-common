@@ -2846,6 +2846,24 @@ func TestBasicFunctionInTemplate(t *testing.T) {
 			stateParams: map[string]any{},
 			expected:    "he...",
 		},
+		{
+			name:        "genUUID function call",
+			template:    `{{genUUID}}`,
+			stateParams: map[string]any{},
+			expected:    "", // Will be validated separately for UUID format
+		},
+		{
+			name:        "generateUUID function call (alias)",
+			template:    `{{generateUUID}}`,
+			stateParams: map[string]any{},
+			expected:    "", // Will be validated separately for UUID format
+		},
+		{
+			name:        "now function call",
+			template:    `{{now}}`,
+			stateParams: map[string]any{},
+			expected:    "", // Will be validated separately for time format
+		},
 	}
 
 	for _, tt := range tests {
@@ -2857,7 +2875,27 @@ func TestBasicFunctionInTemplate(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				
+				// Special validation for UUID and time functions
+				switch tt.name {
+				case "genUUID function call", "generateUUID function call (alias)":
+					// Validate UUID format (should be 36 characters with dashes)
+					resultStr, ok := result.(string)
+					assert.True(t, ok, "Result should be a string")
+					assert.Len(t, resultStr, 36, "UUID should be 36 characters long")
+					assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, resultStr, "Should be valid UUID format")
+				case "now function call":
+					// Validate time format (ISO 8601: 2006-01-02T15:04:05Z)
+					resultStr, ok := result.(string)
+					assert.True(t, ok, "Result should be a string")
+					assert.Len(t, resultStr, 20, "Time should be 20 characters long")
+					assert.Regexp(t, `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`, resultStr, "Should be valid ISO 8601 format")
+					// Verify it can be parsed as time
+					_, parseErr := time.Parse("2006-01-02T15:04:05Z", resultStr)
+					assert.NoError(t, parseErr, "Should be parseable as time")
+				default:
+					assert.Equal(t, tt.expected, result)
+				}
 			}
 		})
 	}

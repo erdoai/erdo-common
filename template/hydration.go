@@ -716,24 +716,36 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 	// Check if the entire string is a single template variable
 	if keys := findTemplateKeysToHydrate(userTemplate, wholeVarRegex, nil); len(keys) == 1 {
 		key := keys[0]
-		if value, err := processSingleVariable(key, *data, &missingKeys); err == nil {
-			return value, nil
-		} else if err != nil {
-			// If this is an optional key and it's missing, return nil
+		
+		// Before treating as variable, check if this is actually a known function
+		// This handles parameterless functions like genUUID, now, noop, etc.
+		if _, isKnownFunction := funcMap[key.Key]; isKnownFunction {
+			// This is a function, not a variable - try to process as function
+			if value, err := processSingleFunction(key.Key, *data, &missingKeys); err == nil {
+				return value, nil
+			}
+			// If function processing fails, fall through to template parsing
+		} else {
+			// This is actually a variable, process normally
+			if value, err := processSingleVariable(key, *data, &missingKeys); err == nil {
+				return value, nil
+			} else if err != nil {
+				// If this is an optional key and it's missing, return nil
+				if key.IsOptional {
+					return nil, nil
+				}
+				return nil, err
+			}
+
 			if key.IsOptional {
 				return nil, nil
 			}
-			return nil, err
-		}
 
-		if key.IsOptional {
-			return nil, nil
-		}
-
-		return nil, &InfoNeededError{
-			MissingKeys:   getKeyStrings(keys),
-			AvailableKeys: getKeys(*data),
-			Err:           fmt.Errorf("missing keys in template"),
+			return nil, &InfoNeededError{
+				MissingKeys:   getKeyStrings(keys),
+				AvailableKeys: getKeys(*data),
+				Err:           fmt.Errorf("missing keys in template"),
+			}
 		}
 	}
 
