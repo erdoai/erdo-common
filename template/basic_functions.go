@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"text/template"
+	"time"
 
 	json "github.com/goccy/go-json"
 	"github.com/google/uuid"
@@ -29,11 +30,17 @@ var basicFuncMap = template.FuncMap{
 	"regexReplace":     regexReplace,
 	"noop":             noop,
 	"genUUID":          genUUID,
+	"generateUUID":     genUUID,
 	"list":             list,
+	"now":              now,
 }
 
 func genUUID() string {
 	return uuid.New().String()
+}
+
+func now() string {
+	return time.Now().UTC().Format("2006-01-02T15:04:05Z")
 }
 
 func toJSON(v any) string {
