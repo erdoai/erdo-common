@@ -207,7 +207,7 @@ func TestHydrateDict(t *testing.T) {
 			template:       map[string]any{"greeting": "Hello, {{name}}!"},
 			stateParams:    map[string]any{},
 			expectedError:  true,
-			expectedErrMsg: "info needed for keys [name]",
+			expectedErrMsg: "info needed for keys [greeting.name]",
 		},
 	}
 
@@ -254,7 +254,7 @@ func TestHydrateSlice(t *testing.T) {
 			template:       []any{"Hello, {{name}}!"},
 			stateParams:    map[string]any{},
 			expectedError:  true,
-			expectedErrMsg: "info needed for keys [name]",
+			expectedErrMsg: "info needed for keys [[0].name]",
 		},
 		{
 			name: "Slice with nested objects and parameterHydrationBehavior",

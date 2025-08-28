@@ -24,18 +24,73 @@ type Key struct {
 
 type KeyDefinitions map[string]Key
 
+type MissingKeyInfo struct {
+	Key  string
+	Path string
+}
+
 type InfoNeededError struct {
-	MissingKeys   []string
-	AvailableKeys []string
-	Err           error
+	MissingKeys     []string
+	MissingKeyPaths []MissingKeyInfo
+	AvailableKeys   []string
+	Err             error
 }
 
 func (e *InfoNeededError) Error() string {
+	if len(e.MissingKeyPaths) > 0 {
+		pathDetails := make([]string, len(e.MissingKeyPaths))
+		for i, info := range e.MissingKeyPaths {
+			if info.Path != "" {
+				// Build the full path: path.key
+				if strings.HasPrefix(info.Path, "[") {
+					// For array indices, don't add a dot
+					pathDetails[i] = info.Path + "." + info.Key
+				} else {
+					pathDetails[i] = info.Path + "." + info.Key
+				}
+			} else {
+				pathDetails[i] = info.Key
+			}
+		}
+		return fmt.Sprintf("info needed for keys %v: %v. Available keys: %v", pathDetails, e.Err, e.AvailableKeys)
+	}
 	return fmt.Sprintf("info needed for keys %v: %v. Available keys: %v", e.MissingKeys, e.Err, e.AvailableKeys)
 }
 
 func (e *InfoNeededError) Unwrap() error {
 	return e.Err
+}
+
+// Helper to add path to error - prepends the path segment
+func addPathToError(err error, pathSegment string) {
+	if err == nil || pathSegment == "" {
+		return
+	}
+	
+	var infoErr *InfoNeededError
+	if errors.As(err, &infoErr) {
+		// Create MissingKeyPaths if needed
+		if len(infoErr.MissingKeyPaths) == 0 && len(infoErr.MissingKeys) > 0 {
+			infoErr.MissingKeyPaths = make([]MissingKeyInfo, len(infoErr.MissingKeys))
+			for i, key := range infoErr.MissingKeys {
+				infoErr.MissingKeyPaths[i] = MissingKeyInfo{Key: key, Path: ""}
+			}
+		}
+		
+		// Prepend the path segment to existing paths
+		for i := range infoErr.MissingKeyPaths {
+			if infoErr.MissingKeyPaths[i].Path == "" {
+				infoErr.MissingKeyPaths[i].Path = pathSegment
+			} else {
+				// For arrays, don't add a dot
+				if strings.HasPrefix(infoErr.MissingKeyPaths[i].Path, "[") {
+					infoErr.MissingKeyPaths[i].Path = pathSegment + infoErr.MissingKeyPaths[i].Path
+				} else {
+					infoErr.MissingKeyPaths[i].Path = pathSegment + "." + infoErr.MissingKeyPaths[i].Path
+				}
+			}
+		}
+	}
 }
 
 func getData(stateParameters *map[string]any) (*map[string]any, error) {
@@ -1339,6 +1394,7 @@ func hydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBe
 
 	result := make(map[string]any)
 	var missingKeys []string
+	var missingKeyPaths []MissingKeyInfo
 
 	// First process all values that need hydration
 	for key, value := range typedDict {
@@ -1400,7 +1456,11 @@ func hydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBe
 		if err != nil {
 			var infoNeededErr *InfoNeededError
 			if errors.As(err, &infoNeededErr) {
+				// Add path to the error
+				addPathToError(err, key)
 				missingKeys = append(missingKeys, infoNeededErr.MissingKeys...)
+				// Collect the paths with updated path info
+				missingKeyPaths = append(missingKeyPaths, infoNeededErr.MissingKeyPaths...)
 				continue
 			}
 
@@ -1408,11 +1468,12 @@ func hydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBe
 		}
 	}
 
-	if len(missingKeys) > 0 {
+	if len(missingKeys) > 0 || len(missingKeyPaths) > 0 {
 		return result, &InfoNeededError{
-			MissingKeys:   missingKeys,
-			AvailableKeys: getKeys(*stateParameters),
-			Err:           fmt.Errorf("missing keys in dict"),
+			MissingKeys:     missingKeys,
+			MissingKeyPaths: missingKeyPaths,
+			AvailableKeys:   getKeys(*stateParameters),
+			Err:             fmt.Errorf("missing keys in dict"),
 		}
 	}
 
@@ -1426,6 +1487,7 @@ func hydrateSlice(slice []any, stateParameters *map[string]any, parameterHydrati
 
 	result := make([]any, len(slice))
 	var missingKeys []string
+	var missingKeyPaths []MissingKeyInfo
 
 	// Process each slice element
 	for i, v := range slice {
@@ -1479,18 +1541,23 @@ func hydrateSlice(slice []any, stateParameters *map[string]any, parameterHydrati
 		if err != nil {
 			var infoNeededErr *InfoNeededError
 			if errors.As(err, &infoNeededErr) {
+				// Add path to the error with array index
+				addPathToError(err, fmt.Sprintf("[%d]", i))
 				missingKeys = append(missingKeys, infoNeededErr.MissingKeys...)
+				// Collect the paths with updated path info
+				missingKeyPaths = append(missingKeyPaths, infoNeededErr.MissingKeyPaths...)
 			} else {
 				return nil, fmt.Errorf("error hydrating slice index %d: %w", i, err)
 			}
 		}
 	}
 
-	if len(missingKeys) > 0 {
+	if len(missingKeys) > 0 || len(missingKeyPaths) > 0 {
 		return result, &InfoNeededError{
-			MissingKeys:   missingKeys,
-			AvailableKeys: getKeys(*stateParameters),
-			Err:           fmt.Errorf("missing keys in slice"),
+			MissingKeys:     missingKeys,
+			MissingKeyPaths: missingKeyPaths,
+			AvailableKeys:   getKeys(*stateParameters),
+			Err:             fmt.Errorf("missing keys in slice"),
 		}
 	}
 
