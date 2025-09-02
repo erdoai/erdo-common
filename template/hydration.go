@@ -66,7 +66,7 @@ func addPathToError(err error, pathSegment string) {
 	if err == nil || pathSegment == "" {
 		return
 	}
-	
+
 	var infoErr *InfoNeededError
 	if errors.As(err, &infoErr) {
 		// Create MissingKeyPaths if needed
@@ -76,7 +76,7 @@ func addPathToError(err error, pathSegment string) {
 				infoErr.MissingKeyPaths[i] = MissingKeyInfo{Key: key, Path: ""}
 			}
 		}
-		
+
 		// Prepend the path segment to existing paths
 		for i := range infoErr.MissingKeyPaths {
 			if infoErr.MissingKeyPaths[i].Path == "" {
@@ -771,7 +771,7 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 	// Check if the entire string is a single template variable
 	if keys := findTemplateKeysToHydrate(userTemplate, wholeVarRegex, nil); len(keys) == 1 {
 		key := keys[0]
-		
+
 		// Before treating as variable, check if this is actually a known function
 		// This handles parameterless functions like genUUID, now, noop, etc.
 		if _, isKnownFunction := funcMap[key.Key]; isKnownFunction {
@@ -813,7 +813,7 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 			return value, nil
 		} else {
 			// Single function processing failed, falling back to full template parsing
-			// This is normal for complex nested function calls
+			// This should rarely happen now that we support slice arguments and complex nested calls
 		}
 	}
 
@@ -1020,16 +1020,23 @@ func processNestedFunction(funcCall string, data map[string]any, missingKeys *[]
 		return nil, false, nil // Not a nested function
 	}
 
-	parts := strings.SplitN(funcCall, " ", 2)
-	if len(parts) != 2 {
-		return nil, true, fmt.Errorf("invalid function call format: %s", funcCall)
+	// Use parseQuotedFields to properly parse the function call
+	parts := parseQuotedFields(funcCall)
+	if len(parts) < 2 {
+		return nil, false, nil // Not enough parts for a nested function
 	}
 
 	outerFunc := parts[0]
-	innerCall := strings.TrimSpace(parts[1])
 
+	// Check if this looks like "func1 (func2 args...)" pattern
+	// This should have exactly 2 parts: the outer function and one parenthesized expression
+	if len(parts) != 2 {
+		return nil, false, nil // Multiple arguments, let parseFunctionCall handle it
+	}
+
+	innerCall := strings.TrimSpace(parts[1])
 	if !strings.HasPrefix(innerCall, "(") || !strings.HasSuffix(innerCall, ")") {
-		return nil, false, nil // Not the expected nested format
+		return nil, false, nil // Not a single parenthesized expression
 	}
 
 	// Extract and process inner function
@@ -1048,17 +1055,38 @@ func processNestedFunction(funcCall string, data map[string]any, missingKeys *[]
 	fnValue := reflect.ValueOf(fn)
 	fnType := fnValue.Type()
 
+	// Check if this is a data function (needs data and missingKeys)
+	isDataFunction := false
+	for _, funcName := range funcsThatNeedData {
+		if funcName == outerFunc {
+			isDataFunction = true
+			break
+		}
+	}
+
 	if fnType.NumIn() == 1 {
-		// Check if innerResult is nil to prevent panic
+		// Simple function with one argument
 		if innerResult == nil {
 			return nil, true, fmt.Errorf("cannot call function %s with nil argument from inner function %s", outerFunc, innerFunc)
 		}
 		callArgs := []reflect.Value{reflect.ValueOf(innerResult)}
 		results := fnValue.Call(callArgs)
 		return processResults(results), true, nil
+	} else if isDataFunction && fnType.NumIn() == 3 {
+		// Data function with (arg, data, missingKeys)
+		if innerResult == nil {
+			return nil, true, fmt.Errorf("cannot call function %s with nil argument from inner function %s", outerFunc, innerFunc)
+		}
+		callArgs := []reflect.Value{
+			reflect.ValueOf(innerResult),
+			reflect.ValueOf(data),
+			reflect.ValueOf(missingKeys),
+		}
+		results := fnValue.Call(callArgs)
+		return processResults(results), true, nil
 	}
 
-	return nil, true, fmt.Errorf("unsupported function signature for nested call: %s", outerFunc)
+	return nil, true, fmt.Errorf("unsupported function signature for nested call: %s (numIn: %d, isDataFunction: %v)", outerFunc, fnType.NumIn(), isDataFunction)
 }
 
 // parseQuotedFields parses a string into fields, respecting quoted strings (both single and double quotes)
@@ -1343,6 +1371,23 @@ func convertArgument(paramValue any, paramType reflect.Type, argIndex int) (refl
 
 	case reflect.Interface:
 		return reflect.ValueOf(paramValue), nil
+
+	case reflect.Slice:
+		// Handle slice types - convert []any to the expected slice type
+		if sliceVal, ok := paramValue.([]any); ok {
+			return reflect.ValueOf(sliceVal), nil
+		}
+		// If it's not []any, try to convert it to []any
+		valueReflect := reflect.ValueOf(paramValue)
+		if valueReflect.Kind() == reflect.Slice {
+			// Convert any slice type to []any
+			resultSlice := make([]any, valueReflect.Len())
+			for i := 0; i < valueReflect.Len(); i++ {
+				resultSlice[i] = valueReflect.Index(i).Interface()
+			}
+			return reflect.ValueOf(resultSlice), nil
+		}
+		return reflect.Value{}, fmt.Errorf("cannot convert argument %d to slice: expected slice, got %T", argIndex, paramValue)
 
 	default:
 		return reflect.Value{}, fmt.Errorf("unsupported argument type for argument %d: %v", argIndex, paramType.Kind())

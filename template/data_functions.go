@@ -136,12 +136,14 @@ func slice(array string, start any, end any, data map[string]any, missingKeys *[
 	_items := get(array, data, missingKeys)
 	if _items == nil {
 		log.Printf("slice items is nil")
+		*missingKeys = append(*missingKeys, array)
 		return []any{}
 	}
 
 	items, ok := _items.([]any)
 	if !ok {
 		log.Printf("slice items not ok: %T %v", _items, _items)
+		*missingKeys = append(*missingKeys, array)
 		return []any{}
 	}
 
@@ -388,8 +390,16 @@ func getAtIndex(array string, index any, data map[string]any, missingKeys *[]str
 
 // merge combines multiple slices into one
 func merge(array1 string, array2 string, data map[string]any, missingKeys *[]string) []any {
+	initialMissingCount := len(*missingKeys)
+
 	items1 := get(array1, data, missingKeys)
 	items2 := get(array2, data, missingKeys)
+
+	// Fail fast if either key was missing
+	if len(*missingKeys) > initialMissingCount {
+		log.Printf("merge: key lookup failed for array1=%q or array2=%q", array1, array2)
+		return []any{}
+	}
 
 	var slice1, slice2 []any
 
@@ -398,7 +408,9 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 	case []any:
 		slice1 = v
 	case nil:
-		slice1 = []any{}
+		log.Printf("merge: array1 key %q resolved to nil", array1)
+		*missingKeys = append(*missingKeys, array1)
+		return []any{}
 	default:
 		// Handle any slice type using reflection as fallback
 		rv := reflect.ValueOf(items1)
@@ -408,7 +420,9 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 				slice1[i] = rv.Index(i).Interface()
 			}
 		} else {
-			slice1 = []any{v}
+			log.Printf("merge: array1 key %q is not a slice, got %T", array1, items1)
+			*missingKeys = append(*missingKeys, array1)
+			return []any{}
 		}
 	}
 
@@ -417,7 +431,9 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 	case []any:
 		slice2 = v
 	case nil:
-		slice2 = []any{}
+		log.Printf("merge: array2 key %q resolved to nil", array2)
+		*missingKeys = append(*missingKeys, array2)
+		return []any{}
 	default:
 		// Handle any slice type using reflection as fallback
 		rv := reflect.ValueOf(items2)
@@ -427,7 +443,9 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 				slice2[i] = rv.Index(i).Interface()
 			}
 		} else {
-			slice2 = []any{v}
+			log.Printf("merge: array2 key %q is not a slice, got %T", array2, items2)
+			*missingKeys = append(*missingKeys, array2)
+			return []any{}
 		}
 	}
 
@@ -464,11 +482,14 @@ func getOrOriginal(key string, keyDefinitions KeyDefinitions, data map[string]an
 func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
 	_slice := get(sliceKey, data, missingKeys)
 	if _slice == nil {
+		log.Printf("sliceEnd: key %q resolved to nil", sliceKey)
+		*missingKeys = append(*missingKeys, sliceKey)
 		return nil
 	}
 
 	slice, ok := _slice.([]any)
 	if !ok {
+		log.Printf("sliceEnd: key %q is not a slice, got %T", sliceKey, _slice)
 		*missingKeys = append(*missingKeys, sliceKey)
 		return nil
 	}
@@ -485,6 +506,7 @@ func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string
 func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
 	_slice := get(sliceKey, data, missingKeys)
 	if _slice == nil {
+		*missingKeys = append(*missingKeys, sliceKey)
 		return nil
 	}
 
