@@ -662,6 +662,7 @@ const (
 	ErrorInfoNeeded     Error = "info needed"
 	ErrorTerminated     Error = "terminated"
 	ErrorBadRequest     Error = "bad request"
+	ErrorTimeout        Error = "timeout"
 )
 
 // Result of an action or invocation operation - gathering params, running a handler, a step etc
