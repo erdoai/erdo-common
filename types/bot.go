@@ -149,16 +149,26 @@ type Model string
 
 const (
 	// Anthropic models
-	ModelClaude3Dot7Sonnet Model = "claude-3-7-sonnet-20250219"
-	ModelClaude4Sonnet     Model = "claude-sonnet-4-20250514"
-	ModelClaude3Dot5Haiku  Model = "claude-3-5-haiku-20241022"
+	ModelClaude4Sonnet Model = "claude-sonnet-4-20250514"
 
-	// OpenAI models
-	ModelGPT4o        Model = "gpt-4o"
-	ModelGPT4oMini    Model = "gpt-4o-mini"
+	// OpenAI models - GPT-4o family (no reasoning support)
+	ModelGPT4o     Model = "gpt-4o"
+	ModelGPT4oMini Model = "gpt-4o-mini"
+
+	// OpenAI models - GPT-4.1 family (reasoning support)
 	ModelGPT4Dot1     Model = "gpt-4.1"
 	ModelGPT4Dot1Mini Model = "gpt-4.1-mini"
 	ModelGPT4Dot1Nano Model = "gpt-4.1-nano"
+
+	// OpenAI models - GPT-5 family (reasoning support)
+	ModelGPT5     Model = "gpt-5"
+	ModelGPT5Mini Model = "gpt-5-mini"
+	ModelGPT5Nano Model = "gpt-5-nano"
+
+	// Google Vertex AI models
+	ModelGemini2Dot5Pro       Model = "gemini-2.5-pro"
+	ModelGemini2Dot5Flash     Model = "gemini-2.5-flash"
+	ModelGemini2Dot5FlashLite Model = "gemini-2.5-flash-lite"
 )
 
 // ParameterDefinition represents a parameter definition (shared across CLI and backend)
@@ -456,7 +466,7 @@ func (cd *ConditionDefinition) UnmarshalJSON(data []byte) error {
 	cd.Leaf = temp.Leaf
 
 	// Handle conditions field
-	if temp.Conditions != nil && len(temp.Conditions) > 0 {
+	if len(temp.Conditions) > 0 {
 		// First check if it's an array
 		var conditionsArray []ConditionDefinition
 		if err := json.Unmarshal(temp.Conditions, &conditionsArray); err == nil {
@@ -624,7 +634,7 @@ const (
 
 	// Dataset events
 	InvocationEventTypeDatasetCreated InvocationEventType = "dataset created"
-	
+
 	// Log events
 	InvocationEventTypeLog InvocationEventType = "log"
 )

@@ -9,6 +9,16 @@ import (
 	"text/template"
 )
 
+// addMissingKey adds a key to the missingKeys slice if it's not already present
+func addMissingKey(missingKeys *[]string, key string) {
+	for _, k := range *missingKeys {
+		if k == key {
+			return // Key already exists, don't add duplicate
+		}
+	}
+	*missingKeys = append(*missingKeys, key)
+}
+
 // Functions that require .Data and .MissingKeys parameters
 var dataFuncMap = template.FuncMap{
 	"get":                          get,
@@ -136,14 +146,14 @@ func slice(array string, start any, end any, data map[string]any, missingKeys *[
 	_items := get(array, data, missingKeys)
 	if _items == nil {
 		log.Printf("slice items is nil")
-		*missingKeys = append(*missingKeys, array)
+		addMissingKey(missingKeys, array)
 		return []any{}
 	}
 
 	items, ok := _items.([]any)
 	if !ok {
 		log.Printf("slice items not ok: %T %v", _items, _items)
-		*missingKeys = append(*missingKeys, array)
+		addMissingKey(missingKeys, array)
 		return []any{}
 	}
 
@@ -409,7 +419,7 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 		slice1 = v
 	case nil:
 		log.Printf("merge: array1 key %q resolved to nil", array1)
-		*missingKeys = append(*missingKeys, array1)
+		addMissingKey(missingKeys, array1)
 		return []any{}
 	default:
 		// Handle any slice type using reflection as fallback
@@ -421,7 +431,7 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 			}
 		} else {
 			log.Printf("merge: array1 key %q is not a slice, got %T", array1, items1)
-			*missingKeys = append(*missingKeys, array1)
+			addMissingKey(missingKeys, array1)
 			return []any{}
 		}
 	}
@@ -432,7 +442,7 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 		slice2 = v
 	case nil:
 		log.Printf("merge: array2 key %q resolved to nil", array2)
-		*missingKeys = append(*missingKeys, array2)
+		addMissingKey(missingKeys, array2)
 		return []any{}
 	default:
 		// Handle any slice type using reflection as fallback
@@ -444,7 +454,7 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 			}
 		} else {
 			log.Printf("merge: array2 key %q is not a slice, got %T", array2, items2)
-			*missingKeys = append(*missingKeys, array2)
+			addMissingKey(missingKeys, array2)
 			return []any{}
 		}
 	}
@@ -483,14 +493,14 @@ func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string
 	_slice := get(sliceKey, data, missingKeys)
 	if _slice == nil {
 		log.Printf("sliceEnd: key %q resolved to nil", sliceKey)
-		*missingKeys = append(*missingKeys, sliceKey)
+		addMissingKey(missingKeys, sliceKey)
 		return nil
 	}
 
 	slice, ok := _slice.([]any)
 	if !ok {
 		log.Printf("sliceEnd: key %q is not a slice, got %T", sliceKey, _slice)
-		*missingKeys = append(*missingKeys, sliceKey)
+		addMissingKey(missingKeys, sliceKey)
 		return nil
 	}
 
@@ -506,13 +516,13 @@ func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string
 func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, missingKeys *[]string) []any {
 	_slice := get(sliceKey, data, missingKeys)
 	if _slice == nil {
-		*missingKeys = append(*missingKeys, sliceKey)
+		addMissingKey(missingKeys, sliceKey)
 		return nil
 	}
 
 	slice, ok := _slice.([]any)
 	if !ok {
-		*missingKeys = append(*missingKeys, sliceKey)
+		addMissingKey(missingKeys, sliceKey)
 		return nil
 	}
 
@@ -671,7 +681,7 @@ func concat(sep string, key string, property string, data any, missingKeys *[]st
 				itemsSlice[i] = rv.Index(i).Interface()
 			}
 		} else {
-			*missingKeys = append(*missingKeys, escapedKey)
+			addMissingKey(missingKeys, escapedKey)
 			return original
 		}
 	}
@@ -680,7 +690,7 @@ func concat(sep string, key string, property string, data any, missingKeys *[]st
 	for _, item := range itemsSlice {
 		itemMap, ok := item.(map[string]any)
 		if !ok {
-			*missingKeys = append(*missingKeys, escapedKey)
+			addMissingKey(missingKeys, escapedKey)
 			return original
 		}
 		itemStr, ok := get(property, itemMap, &[]string{}).(string)
@@ -692,7 +702,7 @@ func concat(sep string, key string, property string, data any, missingKeys *[]st
 	}
 
 	if len(itemsStrs) == 0 {
-		*missingKeys = append(*missingKeys, escapedKey)
+		addMissingKey(missingKeys, escapedKey)
 		return original
 	}
 

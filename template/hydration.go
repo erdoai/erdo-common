@@ -1790,6 +1790,12 @@ func isKeyOptional(key string, keyDefinitions KeyDefinitions) bool {
 // This is used to track which required keys are missing from the data during hydration.
 func handleMissingKey(key string, isOptional bool, missingKeys *[]string) {
 	if !isOptional {
+		// Check if key already exists before adding
+		for _, k := range *missingKeys {
+			if k == key {
+				return
+			}
+		}
 		*missingKeys = append(*missingKeys, key)
 	}
 }

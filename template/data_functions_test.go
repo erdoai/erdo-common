@@ -51,6 +51,93 @@ func TestMergeVsMergeRawOriginalIssue(t *testing.T) {
 	})
 }
 
+func TestMissingKeysDeduplication(t *testing.T) {
+	tests := []struct {
+		name            string
+		data            map[string]any
+		testFunc        func(map[string]any, *[]string)
+		expectedMissing []string // Should be deduped
+	}{
+		{
+			name: "Multiple functions adding same missing key should be deduped",
+			data: map[string]any{
+				"existing": "value",
+			},
+			testFunc: func(data map[string]any, missingKeys *[]string) {
+				// Try to get the same missing key multiple times
+				get("missing_key", data, missingKeys)
+				get("missing_key", data, missingKeys)
+				get("missing_key", data, missingKeys)
+			},
+			expectedMissing: []string{"missing_key"}, // Should only appear once
+		},
+		{
+			name: "merge function adding duplicate missing keys should be deduped",
+			data: map[string]any{
+				"arr1": []any{"a"},
+			},
+			testFunc: func(data map[string]any, missingKeys *[]string) {
+				// First merge with missing second array
+				merge("arr1", "missing_arr", data, missingKeys)
+				// Second merge with same missing array
+				merge("arr1", "missing_arr", data, missingKeys)
+			},
+			expectedMissing: []string{"missing_arr"}, // Should only appear once
+		},
+		{
+			name: "slice function with nil value adding duplicate keys should be deduped",
+			data: map[string]any{
+				"nil_arr": nil,
+			},
+			testFunc: func(data map[string]any, missingKeys *[]string) {
+				// Multiple slice calls on nil array
+				slice("nil_arr", 0, 1, data, missingKeys)
+				slice("nil_arr", 1, 2, data, missingKeys)
+			},
+			expectedMissing: []string{"nil_arr"}, // Should only appear once
+		},
+		{
+			name: "Different missing keys should all be preserved",
+			data: map[string]any{},
+			testFunc: func(data map[string]any, missingKeys *[]string) {
+				get("missing1", data, missingKeys)
+				get("missing2", data, missingKeys)
+				get("missing3", data, missingKeys)
+				get("missing1", data, missingKeys) // Duplicate
+			},
+			expectedMissing: []string{"missing1", "missing2", "missing3"}, // Three unique keys
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			missingKeys := []string{}
+			tt.testFunc(tt.data, &missingKeys)
+
+			// Check for duplicates
+			seen := make(map[string]bool)
+			var dedupedKeys []string
+			for _, key := range missingKeys {
+				if !seen[key] {
+					seen[key] = true
+					dedupedKeys = append(dedupedKeys, key)
+				}
+			}
+
+			// Verify no duplicates in result
+			if len(dedupedKeys) != len(missingKeys) {
+				t.Errorf("Missing keys contain duplicates. Original: %v, Deduped: %v", missingKeys, dedupedKeys)
+			}
+
+			// Verify we have the expected keys
+			if len(missingKeys) != len(tt.expectedMissing) {
+				t.Errorf("Expected %d missing keys, got %d. Expected: %v, Got: %v", 
+					len(tt.expectedMissing), len(missingKeys), tt.expectedMissing, missingKeys)
+			}
+		})
+	}
+}
+
 func TestMergeFailFastBehavior(t *testing.T) {
 	tests := []struct {
 		name           string
