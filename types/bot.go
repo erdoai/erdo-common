@@ -149,7 +149,9 @@ type Model string
 
 const (
 	// Anthropic models
-	ModelClaude4Sonnet Model = "claude-sonnet-4-20250514"
+	ModelClaude4Sonnet     Model = "claude-sonnet-4"
+	ModelClaude4Dot5Sonnet Model = "claude-sonnet-4-5"
+	ModelClaudeHaiku4Dot5  Model = "claude-haiku-4.5"
 
 	// OpenAI models - GPT-4o family (no reasoning support)
 	ModelGPT4o     Model = "gpt-4o"
