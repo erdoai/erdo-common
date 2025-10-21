@@ -766,6 +766,13 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 	if data == nil {
 		data = &map[string]any{}
 	}
+
+	// Early exit: if string doesn't contain template markers, return as-is
+	// This is a huge optimization - most strings don't have templates!
+	if !strings.Contains(userTemplate, "{{") && !strings.Contains(userTemplate, "%(") {
+		return userTemplate, nil
+	}
+
 	var missingKeys []string
 
 	// Check if the entire string is a single template variable
@@ -1437,7 +1444,8 @@ func hydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBe
 		return typedDict, nil
 	}
 
-	result := make(map[string]any)
+	// Pre-allocate result map with same capacity as input to avoid resizing
+	result := make(map[string]any, len(typedDict))
 	var missingKeys []string
 	var missingKeyPaths []MissingKeyInfo
 

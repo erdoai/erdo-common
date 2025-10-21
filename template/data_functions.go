@@ -837,7 +837,8 @@ func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]st
 func filter(key string, field string, operator string, value any, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
 	if arr, ok := val.([]any); ok {
-		result := make([]any, 0)
+		// Pre-allocate with input capacity (worst case all items match)
+		result := make([]any, 0, len(arr))
 		for _, item := range arr {
 			var fieldVal any
 			if mapVal, ok := item.(map[string]any); ok {
