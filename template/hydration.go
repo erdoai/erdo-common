@@ -275,6 +275,12 @@ func findTemplateKeysToHydrate(s any, regex *regexp.Regexp, parameterHydrationBe
 		return []Key{}
 	}
 
+	// Early exit: if string doesn't contain template markers, return empty
+	// This is a huge optimization when scanning hydrated output with many non-template strings
+	if !strings.Contains(str, "{{") && !strings.Contains(str, "%(") {
+		return []Key{}
+	}
+
 	matches := regex.FindAllStringSubmatch(str, -1)
 	keys := make([]Key, 0, len(matches))
 	for _, match := range matches {
