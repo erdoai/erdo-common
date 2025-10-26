@@ -7,6 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Custom type alias for testing (like DatasetType)
+type TestStringAlias string
+
 func TestEqWithPointers(t *testing.T) {
 	t.Parallel()
 
@@ -104,6 +107,21 @@ func TestEqWithPointers(t *testing.T) {
 			name:     "different types (int and string)",
 			args:     []any{&num42, "42"},
 			expected: false,
+		},
+		{
+			name:     "type alias and underlying type (equal)",
+			args:     []any{TestStringAlias("integration"), "integration"},
+			expected: true,
+		},
+		{
+			name:     "type alias and underlying type (not equal)",
+			args:     []any{TestStringAlias("integration"), "file"},
+			expected: false,
+		},
+		{
+			name:     "pointer to type alias and string literal",
+			args:     []any{func() *TestStringAlias { v := TestStringAlias("integration"); return &v }(), "integration"},
+			expected: true,
 		},
 	}
 

@@ -287,6 +287,7 @@ func derefValue(v any) any {
 // eq performs pointer-aware equality comparison, automatically dereferencing pointers
 // Overrides Go template's built-in eq to handle pointer fields in structs
 // Special case: nil pointers are treated as empty strings for comparison purposes
+// Handles type aliases (like DatasetType string) by comparing underlying values
 // Usage: {{if eq $r.Dataset.Name "foo"}}...{{end}}
 func eq(args ...any) bool {
 	if len(args) == 0 {
@@ -314,8 +315,28 @@ func eq(args ...any) bool {
 			return false
 		}
 
-		// Use reflect.DeepEqual for comparison
-		if !reflect.DeepEqual(first, other) {
+		// Try reflect.DeepEqual first (handles most cases)
+		if reflect.DeepEqual(first, other) {
+			continue
+		}
+
+		// If DeepEqual fails, check if BOTH values are string-based types
+		// This handles type aliases like DatasetType string vs string literals
+		// Only use string comparison if both have string as their underlying kind
+		firstVal := reflect.ValueOf(first)
+		otherVal := reflect.ValueOf(other)
+		firstKind := firstVal.Kind()
+		otherKind := otherVal.Kind()
+
+		if firstKind == reflect.String && otherKind == reflect.String {
+			// Both are strings (or string aliases), so string comparison is appropriate
+			firstStr := fmt.Sprintf("%v", first)
+			otherStr := fmt.Sprintf("%v", other)
+			if firstStr != otherStr {
+				return false
+			}
+		} else {
+			// Different types, so DeepEqual failure means they're not equal
 			return false
 		}
 	}
