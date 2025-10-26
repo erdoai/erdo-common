@@ -571,19 +571,24 @@ func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, m
 
 // isUserMessage checks if a message has role "user"
 func isUserMessage(msg any) bool {
-	if msgDict, ok := msg.(map[string]any); ok {
-		if role, exists := msgDict["role"]; exists {
-			if roleStr, ok := role.(string); ok && roleStr == "user" {
-				return true
-			}
-		}
-	} else if msgMap, ok := msg.(map[string]any); ok {
-		if role, exists := msgMap["role"]; exists {
-			if roleStr, ok := role.(string); ok && roleStr == "user" {
-				return true
-			}
+	msgDict, ok := msg.(map[string]any)
+	if !ok {
+		return false
+	}
+
+	// Check both "role" (JSON tag) and "Role" (struct field name)
+	// to handle both JSON-ified and struct-to-map serialized data
+	role, exists := msgDict["role"]
+	if !exists {
+		role, exists = msgDict["Role"]
+	}
+
+	if exists {
+		if roleStr, ok := role.(string); ok && roleStr == "user" {
+			return true
 		}
 	}
+
 	return false
 }
 
