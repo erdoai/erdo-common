@@ -22,6 +22,8 @@ var basicFuncMap = template.FuncMap{
 	"sub":              sub,
 	"gt":               gt,
 	"lt":               lt,
+	"eq":               eq, // Override built-in eq to handle pointers
+	"ne":               ne, // Override built-in ne to handle pointers
 	"mergeRaw":         mergeRaw,
 	"nilToEmptyString": nilToEmptyString,
 	"truthyValue":      truthyValue,
@@ -247,4 +249,67 @@ func noop() string {
 // Usage: {{list "item1" "item2" "item3"}} returns []any{"item1", "item2", "item3"}
 func list(args ...any) []any {
 	return args
+}
+
+// derefValue dereferences a pointer value if it's a pointer, otherwise returns the value as-is
+func derefValue(v any) any {
+	if v == nil {
+		return nil
+	}
+
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return nil
+		}
+		return val.Elem().Interface()
+	}
+
+	return v
+}
+
+// eq performs pointer-aware equality comparison, automatically dereferencing pointers
+// Overrides Go template's built-in eq to handle pointer fields in structs
+// Special case: nil pointers are treated as empty strings for comparison purposes
+// Usage: {{if eq $r.Dataset.Name "foo"}}...{{end}}
+func eq(args ...any) bool {
+	if len(args) == 0 {
+		return false
+	}
+
+	// Dereference first argument
+	first := derefValue(args[0])
+
+	// Compare with all other arguments - all must be equal
+	for i := 1; i < len(args); i++ {
+		other := derefValue(args[i])
+
+		// Special handling for nil comparison with empty string
+		// This makes nil pointer equivalent to empty string for template convenience
+		if (first == nil && other == "") || (first == "" && other == nil) {
+			continue
+		}
+
+		// Handle nil cases
+		if first == nil && other == nil {
+			continue
+		}
+		if first == nil || other == nil {
+			return false
+		}
+
+		// Use reflect.DeepEqual for comparison
+		if !reflect.DeepEqual(first, other) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// ne performs pointer-aware inequality comparison, automatically dereferencing pointers
+// Overrides Go template's built-in ne to handle pointer fields in structs
+// Usage: {{if ne $r.Dataset.Description ""}}...{{end}}
+func ne(args ...any) bool {
+	return !eq(args...)
 }
