@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 func JSONToDict(j json.RawMessage) (map[string]any, error) {
@@ -249,4 +250,121 @@ func structToMapReflect(val reflect.Value) (any, error) {
 		// For primitive types, just return the value as-is
 		return val.Interface(), nil
 	}
+}
+
+// GetFieldValue gets a field value from any type (struct or map) by field name.
+// Handles both lowercase (JSON tag) and PascalCase (struct field name) lookups.
+// Returns nil if field not found.
+func GetFieldValue(obj any, fieldName string) any {
+	if obj == nil {
+		return nil
+	}
+
+	// Try map access first (fast path)
+	if m, ok := obj.(map[string]any); ok {
+		// Try exact match first
+		if val, exists := m[fieldName]; exists {
+			return val
+		}
+		// Try PascalCase version (for lowercase input)
+		if len(fieldName) > 0 {
+			pascalCase := strings.ToUpper(fieldName[:1]) + fieldName[1:]
+			if val, exists := m[pascalCase]; exists {
+				return val
+			}
+		}
+		// Try lowercase version (for PascalCase input)
+		if len(fieldName) > 0 && fieldName[0] >= 'A' && fieldName[0] <= 'Z' {
+			lowerCase := strings.ToLower(fieldName[:1]) + fieldName[1:]
+			if val, exists := m[lowerCase]; exists {
+				return val
+			}
+		}
+		return nil
+	}
+
+	// Use reflection for structs
+	val := reflect.ValueOf(obj)
+
+	// Dereference pointers
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return nil
+		}
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil
+	}
+
+	typ := val.Type()
+
+	// Try exact field name match first (PascalCase)
+	if len(fieldName) > 0 {
+		pascalCase := strings.ToUpper(fieldName[:1]) + fieldName[1:]
+		if field, ok := typ.FieldByName(pascalCase); ok {
+			fieldVal := val.FieldByIndex(field.Index)
+			if !fieldVal.IsValid() || !fieldVal.CanInterface() {
+				return nil
+			}
+			// Dereference pointer fields
+			if fieldVal.Kind() == reflect.Ptr {
+				if fieldVal.IsNil() {
+					return nil
+				}
+				fieldVal = fieldVal.Elem()
+			}
+			return fieldVal.Interface()
+		}
+	}
+
+	// Try lowercase field name
+	if field, ok := typ.FieldByName(fieldName); ok {
+		fieldVal := val.FieldByIndex(field.Index)
+		if !fieldVal.IsValid() || !fieldVal.CanInterface() {
+			return nil
+		}
+		// Dereference pointer fields
+		if fieldVal.Kind() == reflect.Ptr {
+			if fieldVal.IsNil() {
+				return nil
+			}
+			fieldVal = fieldVal.Elem()
+		}
+		return fieldVal.Interface()
+	}
+
+	return nil
+}
+
+// ToAnySlice converts any slice type to []any.
+// Handles []any, []SomeStruct, []interface{}, etc.
+// Returns nil if input is not a slice.
+func ToAnySlice(v any) []any {
+	if v == nil {
+		return nil
+	}
+
+	// Fast path for []any
+	if slice, ok := v.([]any); ok {
+		return slice
+	}
+
+	// Use reflection for other slice types
+	val := reflect.ValueOf(v)
+	if val.Kind() != reflect.Slice {
+		return nil
+	}
+
+	result := make([]any, val.Len())
+	for i := 0; i < val.Len(); i++ {
+		elem := val.Index(i)
+		if !elem.CanInterface() {
+			result[i] = nil
+			continue
+		}
+		result[i] = elem.Interface()
+	}
+	return result
 }

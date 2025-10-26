@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+
+	. "github.com/erdoai/erdo-common/utils"
 )
 
 // addMissingKey adds a key to the missingKeys slice if it's not already present
@@ -92,8 +94,8 @@ func mapToDict(listKey string, dictKey string, data map[string]any, missingKeys 
 		return []map[string]any{}
 	}
 
-	list, ok := _list.([]any)
-	if !ok {
+	list := ToAnySlice(_list)
+	if list == nil {
 		log.Printf("Error casting to list in mapToDict: %T %v", _list, _list)
 		return []map[string]any{}
 	}
@@ -108,10 +110,11 @@ func mapToDict(listKey string, dictKey string, data map[string]any, missingKeys 
 
 func coalescelist(list string, data map[string]any, missingKeys *[]string) []any {
 	_list := get(list, data, missingKeys)
-	if _list == nil {
+	slice := ToAnySlice(_list)
+	if slice == nil {
 		return []any{}
 	}
-	return _list.([]any)
+	return slice
 }
 
 func getSliceInt(v any, data map[string]any, missingKeys *[]string) (*int, bool) {
@@ -150,8 +153,8 @@ func slice(array string, start any, end any, data map[string]any, missingKeys *[
 		return []any{}
 	}
 
-	items, ok := _items.([]any)
-	if !ok {
+	items := ToAnySlice(_items)
+	if items == nil {
 		log.Printf("slice items not ok: %T %v", _items, _items)
 		addMissingKey(missingKeys, array)
 		return []any{}
@@ -184,18 +187,20 @@ func slice(array string, start any, end any, data map[string]any, missingKeys *[
 // Example: {{extractSlice "items" "name"}} will extract the name field from each item in the items list
 // It supports extracting any type of value - strings, numbers, objects, arrays, etc.
 func extractSlice(array string, propertyPath string, data map[string]any, missingKeys *[]string) []any {
-	items := get(array, data, missingKeys)
+	_items := get(array, data, missingKeys)
+	if _items == nil {
+		return []any{}
+	}
+
+	items := ToAnySlice(_items)
 	if items == nil {
 		return []any{}
 	}
 
-	var result []any
-	if items, ok := items.([]any); ok {
-		result = make([]any, 0, len(items))
-		for _, item := range items {
-			if val := get(propertyPath, item, missingKeys); val != nil {
-				result = append(result, val)
-			}
+	result := make([]any, 0, len(items))
+	for _, item := range items {
+		if val := get(propertyPath, item, missingKeys); val != nil {
+			result = append(result, val)
 		}
 	}
 	return result
@@ -208,8 +213,8 @@ func dedupeBy(array string, field string, data map[string]any, missingKeys *[]st
 		return []any{}
 	}
 
-	items, ok := _items.([]any)
-	if !ok {
+	items := ToAnySlice(_items)
+	if items == nil {
 		log.Printf("dedupeBy: items is not a slice, got type %T for array %q", _items, array)
 		return []any{}
 	}
@@ -265,8 +270,8 @@ func find(arrayKey string, fieldKey string, targetKey any, data map[string]any, 
 
 	targetStr := fmt.Sprintf("%v", targetValue)
 
-	items, ok := _items.([]any)
-	if !ok {
+	items := ToAnySlice(_items)
+	if items == nil {
 		return nil
 	}
 
@@ -308,8 +313,8 @@ func findByValue(arrayKey string, fieldKey string, targetValue any, data map[str
 
 	targetStr := fmt.Sprintf("%v", targetValue)
 
-	items, ok := _items.([]any)
-	if !ok {
+	items := ToAnySlice(_items)
+	if items == nil {
 		return nil
 	}
 
@@ -351,8 +356,8 @@ func getAtIndex(array string, index any, data map[string]any, missingKeys *[]str
 		return nil
 	}
 
-	items, ok := _items.([]any)
-	if !ok {
+	items := ToAnySlice(_items)
+	if items == nil {
 		return nil
 	}
 
@@ -414,49 +419,19 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 	var slice1, slice2 []any
 
 	// Convert first array
-	switch v := items1.(type) {
-	case []any:
-		slice1 = v
-	case nil:
-		log.Printf("merge: array1 key %q resolved to nil", array1)
+	slice1 = ToAnySlice(items1)
+	if slice1 == nil {
+		log.Printf("merge: array1 key %q is not a slice, got %T", array1, items1)
 		addMissingKey(missingKeys, array1)
 		return []any{}
-	default:
-		// Handle any slice type using reflection as fallback
-		rv := reflect.ValueOf(items1)
-		if rv.Kind() == reflect.Slice {
-			slice1 = make([]any, rv.Len())
-			for i := 0; i < rv.Len(); i++ {
-				slice1[i] = rv.Index(i).Interface()
-			}
-		} else {
-			log.Printf("merge: array1 key %q is not a slice, got %T", array1, items1)
-			addMissingKey(missingKeys, array1)
-			return []any{}
-		}
 	}
 
 	// Convert second array
-	switch v := items2.(type) {
-	case []any:
-		slice2 = v
-	case nil:
-		log.Printf("merge: array2 key %q resolved to nil", array2)
+	slice2 = ToAnySlice(items2)
+	if slice2 == nil {
+		log.Printf("merge: array2 key %q is not a slice, got %T", array2, items2)
 		addMissingKey(missingKeys, array2)
 		return []any{}
-	default:
-		// Handle any slice type using reflection as fallback
-		rv := reflect.ValueOf(items2)
-		if rv.Kind() == reflect.Slice {
-			slice2 = make([]any, rv.Len())
-			for i := 0; i < rv.Len(); i++ {
-				slice2[i] = rv.Index(i).Interface()
-			}
-		} else {
-			log.Printf("merge: array2 key %q is not a slice, got %T", array2, items2)
-			addMissingKey(missingKeys, array2)
-			return []any{}
-		}
 	}
 
 	// Combine slices
@@ -497,8 +472,8 @@ func sliceEnd(sliceKey string, n int, data map[string]any, missingKeys *[]string
 		return nil
 	}
 
-	slice, ok := _slice.([]any)
-	if !ok {
+	slice := ToAnySlice(_slice)
+	if slice == nil {
 		log.Printf("sliceEnd: key %q is not a slice, got %T", sliceKey, _slice)
 		addMissingKey(missingKeys, sliceKey)
 		return nil
@@ -520,8 +495,9 @@ func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, m
 		return nil
 	}
 
-	slice, ok := _slice.([]any)
-	if !ok {
+	// Convert to []any regardless of the underlying type ([]any, []Message, etc.)
+	slice := ToAnySlice(_slice)
+	if slice == nil {
 		addMissingKey(missingKeys, sliceKey)
 		return nil
 	}
@@ -570,26 +546,20 @@ func sliceEndKeepFirstUserMessage(sliceKey string, n int, data map[string]any, m
 }
 
 // isUserMessage checks if a message has role "user"
+// Handles both map[string]any and struct types with Role field
 func isUserMessage(msg any) bool {
-	msgDict, ok := msg.(map[string]any)
+	// Use common utility function that works for both maps and structs
+	roleVal := GetFieldValue(msg, "role")
+	if roleVal == nil {
+		return false
+	}
+
+	roleStr, ok := roleVal.(string)
 	if !ok {
 		return false
 	}
 
-	// Check both "role" (JSON tag) and "Role" (struct field name)
-	// to handle both JSON-ified and struct-to-map serialized data
-	role, exists := msgDict["role"]
-	if !exists {
-		role, exists = msgDict["Role"]
-	}
-
-	if exists {
-		if roleStr, ok := role.(string); ok && roleStr == "user" {
-			return true
-		}
-	}
-
-	return false
+	return roleStr == "user"
 }
 
 // get retrieves a value from a nested data structure using a dot-separated key path.
@@ -701,39 +671,23 @@ func concat(sep string, key string, property string, data any, missingKeys *[]st
 		return original
 	}
 
-	var itemsSlice []any
-	switch v := items.(type) {
-	case []map[string]any:
-		itemsSlice = make([]any, len(v))
-		for i, m := range v {
-			itemsSlice[i] = m
-		}
-	case []any:
-		itemsSlice = v
-	default:
-		// Handle any slice type using reflection as fallback
-		rv := reflect.ValueOf(items)
-		if rv.Kind() == reflect.Slice {
-			itemsSlice = make([]any, rv.Len())
-			for i := 0; i < rv.Len(); i++ {
-				itemsSlice[i] = rv.Index(i).Interface()
-			}
-		} else {
-			addMissingKey(missingKeys, escapedKey)
-			return original
-		}
+	itemsSlice := ToAnySlice(items)
+	if itemsSlice == nil {
+		addMissingKey(missingKeys, escapedKey)
+		return original
 	}
 
 	itemsStrs := []string{}
 	for _, item := range itemsSlice {
-		itemMap, ok := item.(map[string]any)
-		if !ok {
-			addMissingKey(missingKeys, escapedKey)
-			return original
-		}
-		itemStr, ok := get(property, itemMap, &[]string{}).(string)
-		if !ok {
+		// Use GetFieldValue to work with both maps and structs
+		propVal := GetFieldValue(item, property)
+		if propVal == nil {
 			// if we can't get the property, skip it
+			continue
+		}
+		itemStr, ok := propVal.(string)
+		if !ok {
+			// if property is not a string, skip it
 			continue
 		}
 		itemsStrs = append(itemsStrs, itemStr)
@@ -756,8 +710,8 @@ func addkeytoall(listKey string, key string, value any, data map[string]any, mis
 		return []any{}
 	}
 
-	list, ok := _list.([]any)
-	if !ok {
+	list := ToAnySlice(_list)
+	if list == nil {
 		log.Printf("Error casting to list in addkeytoall: %T %v", _list, _list)
 		return []any{}
 	}
@@ -874,58 +828,58 @@ func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]st
 // Supports operators: "eq" (equals), "in" (value in list)
 func filter(key string, field string, operator string, value any, data map[string]any, missingKeys *[]string) []any {
 	val := get(key, data, missingKeys)
-	if arr, ok := val.([]any); ok {
-		// Pre-allocate with input capacity (worst case all items match)
-		result := make([]any, 0, len(arr))
-		for _, item := range arr {
-			var fieldVal any
-			if mapVal, ok := item.(map[string]any); ok {
-				fieldVal = mapVal[field]
-			}
-
-			var matches bool
-			switch operator {
-			case "eq":
-				// Convert both values to the same type for comparison
-				// Handle the case where value comes from template as string but field is numeric
-				if fieldVal != nil && value != nil {
-					if _, ok := fieldVal.(int); ok {
-						if valueStr, ok := value.(string); ok {
-							if valueInt, err := strconv.Atoi(valueStr); err == nil {
-								value = valueInt
-							}
-						}
-					} else if _, ok := fieldVal.(float64); ok {
-						if valueStr, ok := value.(string); ok {
-							if valueFloat, err := strconv.ParseFloat(valueStr, 64); err == nil {
-								value = valueFloat
-							}
-						}
-					}
-				}
-				matches = reflect.DeepEqual(fieldVal, value)
-			case "in":
-				// Check if fieldVal is in the value list
-				if valueList, ok := value.([]any); ok {
-					for _, listItem := range valueList {
-						if reflect.DeepEqual(fieldVal, listItem) {
-							matches = true
-							break
-						}
-					}
-				}
-			default:
-				// Default to equals for unknown operators
-				matches = reflect.DeepEqual(fieldVal, value)
-			}
-
-			if matches {
-				result = append(result, item)
-			}
-		}
-		return result
+	arr := ToAnySlice(val)
+	if arr == nil {
+		return []any{}
 	}
-	return []any{}
+
+	// Pre-allocate with input capacity (worst case all items match)
+	result := make([]any, 0, len(arr))
+	for _, item := range arr {
+		// Use GetFieldValue to work with both maps and structs
+		fieldVal := GetFieldValue(item, field)
+
+		var matches bool
+		switch operator {
+		case "eq":
+			// Convert both values to the same type for comparison
+			// Handle the case where value comes from template as string but field is numeric
+			if fieldVal != nil && value != nil {
+				if _, ok := fieldVal.(int); ok {
+					if valueStr, ok := value.(string); ok {
+						if valueInt, err := strconv.Atoi(valueStr); err == nil {
+							value = valueInt
+						}
+					}
+				} else if _, ok := fieldVal.(float64); ok {
+					if valueStr, ok := value.(string); ok {
+						if valueFloat, err := strconv.ParseFloat(valueStr, 64); err == nil {
+							value = valueFloat
+						}
+					}
+				}
+			}
+			matches = reflect.DeepEqual(fieldVal, value)
+		case "in":
+			// Check if fieldVal is in the value list
+			if valueList, ok := value.([]any); ok {
+				for _, listItem := range valueList {
+					if reflect.DeepEqual(fieldVal, listItem) {
+						matches = true
+						break
+					}
+				}
+			}
+		default:
+			// Default to equals for unknown operators
+			matches = reflect.DeepEqual(fieldVal, value)
+		}
+
+		if matches {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 // mapToArray converts a map to an array of objects with "key" and "value" fields

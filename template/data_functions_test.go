@@ -2,6 +2,10 @@ package template
 
 import (
 	"testing"
+
+	. "github.com/erdoai/erdo-common/utils"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMergeVsMergeRawOriginalIssue(t *testing.T) {
@@ -413,4 +417,218 @@ func TestSliceEndKeepFirstUserMessageFailFastBehavior(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestStructTypeHandling tests that template functions work with struct types (not just maps)
+func TestStructTypeHandling(t *testing.T) {
+	// Define a Message struct similar to types.Message
+	type Message struct {
+		Role    string
+		Content string
+		ID      string
+	}
+
+	t.Run("sliceEndKeepFirstUserMessage with []Message structs", func(t *testing.T) {
+		data := map[string]any{
+			"messages": []Message{
+				{Role: "user", Content: "first user message", ID: "1"},
+				{Role: "assistant", Content: "first assistant response", ID: "2"},
+				{Role: "assistant", Content: "second assistant response", ID: "3"},
+				{Role: "user", Content: "second user message", ID: "4"},
+			},
+		}
+
+		missingKeys := []string{}
+		result := sliceEndKeepFirstUserMessage("messages", 2, data, &missingKeys)
+
+		require.Empty(t, missingKeys, "Should not have missing keys")
+		require.Len(t, result, 3, "Should return last 2 messages plus first user message")
+
+		// Verify first element is the first user message
+		firstMsg := result[0].(Message)
+		assert.Equal(t, "user", firstMsg.Role)
+		assert.Equal(t, "first user message", firstMsg.Content)
+	})
+
+	t.Run("filter with struct array", func(t *testing.T) {
+		type Item struct {
+			Name   string
+			Status string
+			Count  int
+		}
+
+		data := map[string]any{
+			"items": []Item{
+				{Name: "item1", Status: "active", Count: 5},
+				{Name: "item2", Status: "inactive", Count: 3},
+				{Name: "item3", Status: "active", Count: 7},
+			},
+		}
+
+		missingKeys := []string{}
+		result := filter("items", "Status", "eq", "active", data, &missingKeys)
+
+		require.Empty(t, missingKeys)
+		require.Len(t, result, 2, "Should filter to 2 active items")
+
+		// Verify filtered results
+		item1 := result[0].(Item)
+		assert.Equal(t, "active", item1.Status)
+	})
+
+	t.Run("concat with struct array", func(t *testing.T) {
+		type User struct {
+			Name  string
+			Email string
+		}
+
+		data := map[string]any{
+			"users": []User{
+				{Name: "Alice", Email: "alice@example.com"},
+				{Name: "Bob", Email: "bob@example.com"},
+				{Name: "Charlie", Email: "charlie@example.com"},
+			},
+		}
+
+		missingKeys := []string{}
+		result := concat(", ", "users", "Name", data, &missingKeys)
+
+		assert.Equal(t, "Alice, Bob, Charlie", result)
+		require.Empty(t, missingKeys)
+	})
+
+	t.Run("ToAnySlice with different slice types", func(t *testing.T) {
+		type Custom struct {
+			Value string
+		}
+
+		tests := []struct {
+			name     string
+			input    any
+			expected int
+			isNil    bool
+		}{
+			{
+				name:     "[]any",
+				input:    []any{1, 2, 3},
+				expected: 3,
+			},
+			{
+				name:     "[]string",
+				input:    []string{"a", "b", "c"},
+				expected: 3,
+			},
+			{
+				name:     "[]int",
+				input:    []int{1, 2, 3},
+				expected: 3,
+			},
+			{
+				name:     "[]Custom",
+				input:    []Custom{{Value: "a"}, {Value: "b"}},
+				expected: 2,
+			},
+			{
+				name:     "[]Message",
+				input:    []Message{{Role: "user"}},
+				expected: 1,
+			},
+			{
+				name:  "not a slice",
+				input: "string",
+				isNil: true,
+			},
+			{
+				name:  "nil",
+				input: nil,
+				isNil: true,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := ToAnySlice(tt.input)
+				if tt.isNil {
+					assert.Nil(t, result)
+				} else {
+					require.NotNil(t, result)
+					assert.Len(t, result, tt.expected)
+				}
+			})
+		}
+	})
+
+	t.Run("GetFieldValue with different types", func(t *testing.T) {
+		type Nested struct {
+			Value string
+		}
+
+		type TestStruct struct {
+			Name   string
+			Count  int
+			Active *bool
+			Nested Nested
+		}
+
+		active := true
+		testStruct := TestStruct{
+			Name:   "test",
+			Count:  42,
+			Active: &active,
+			Nested: Nested{Value: "nested value"},
+		}
+
+		// Test struct field access
+		assert.Equal(t, "test", GetFieldValue(testStruct, "name"))
+		assert.Equal(t, "test", GetFieldValue(testStruct, "Name"))
+		assert.Equal(t, 42, GetFieldValue(testStruct, "count"))
+		assert.Equal(t, 42, GetFieldValue(testStruct, "Count"))
+		assert.Equal(t, true, GetFieldValue(testStruct, "active"))
+
+		// Test map field access
+		testMap := map[string]any{
+			"name":   "test",
+			"count":  42,
+			"active": true,
+		}
+
+		assert.Equal(t, "test", GetFieldValue(testMap, "name"))
+		assert.Equal(t, "test", GetFieldValue(testMap, "Name")) // Should try PascalCase
+		assert.Equal(t, 42, GetFieldValue(testMap, "count"))
+
+		// Test with PascalCase map keys
+		pascalMap := map[string]any{
+			"Name":   "test",
+			"Count":  42,
+			"Active": true,
+		}
+
+		assert.Equal(t, "test", GetFieldValue(pascalMap, "name")) // Should find Name
+		assert.Equal(t, 42, GetFieldValue(pascalMap, "count"))    // Should find Count
+
+		// Test nil/missing
+		assert.Nil(t, GetFieldValue(testStruct, "nonexistent"))
+		assert.Nil(t, GetFieldValue(testMap, "nonexistent"))
+		assert.Nil(t, GetFieldValue(nil, "name"))
+	})
+
+	t.Run("isUserMessage with struct vs map", func(t *testing.T) {
+		// Test with struct
+		structMsg := Message{Role: "user", Content: "test"}
+		assert.True(t, isUserMessage(structMsg))
+
+		structAssistant := Message{Role: "assistant", Content: "test"}
+		assert.False(t, isUserMessage(structAssistant))
+
+		// Test with map
+		mapMsg := map[string]any{"role": "user", "content": "test"}
+		assert.True(t, isUserMessage(mapMsg))
+
+		mapAssistant := map[string]any{"role": "assistant", "content": "test"}
+		assert.False(t, isUserMessage(mapAssistant))
+
+		// Test with PascalCase map
+		pascalMsg := map[string]any{"Role": "user", "Content": "test"}
+		assert.True(t, isUserMessage(pascalMsg))
+	})
 }
