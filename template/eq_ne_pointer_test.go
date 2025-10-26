@@ -361,3 +361,222 @@ func TestDerefValue(t *testing.T) {
 		})
 	}
 }
+
+func TestToStringWithPointers(t *testing.T) {
+	t.Parallel()
+
+	hello := "hello"
+	num42 := 42
+
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{
+			name:     "nil pointer",
+			input:    (*string)(nil),
+			expected: "",
+		},
+		{
+			name:     "string pointer",
+			input:    &hello,
+			expected: "hello",
+		},
+		{
+			name:     "int pointer",
+			input:    &num42,
+			expected: "42",
+		},
+		{
+			name:     "non-pointer string",
+			input:    "world",
+			expected: "world",
+		},
+		{
+			name:     "non-pointer int",
+			input:    123,
+			expected: "123",
+		},
+		{
+			name:     "nil value",
+			input:    nil,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := toString(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestTruncateStringWithPointers(t *testing.T) {
+	t.Parallel()
+
+	longStr := "This is a very long string that needs truncation"
+	shortStr := "Short"
+
+	tests := []struct {
+		name     string
+		input    any
+		length   int
+		expected string
+	}{
+		{
+			name:     "nil pointer",
+			input:    (*string)(nil),
+			length:   10,
+			expected: "",
+		},
+		{
+			name:     "pointer to long string - truncated",
+			input:    &longStr,
+			length:   10,
+			expected: "This is...",
+		},
+		{
+			name:     "pointer to short string - not truncated",
+			input:    &shortStr,
+			length:   10,
+			expected: "Short",
+		},
+		{
+			name:     "pointer to string - exact length",
+			input:    &shortStr,
+			length:   5,
+			expected: "Short",
+		},
+		{
+			name:     "non-pointer string truncated",
+			input:    "Hello World",
+			length:   8,
+			expected: "Hello...",
+		},
+		{
+			name:     "zero length",
+			input:    &longStr,
+			length:   0,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := truncateString(tt.input, tt.length)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestNilToEmptyStringWithPointers(t *testing.T) {
+	t.Parallel()
+
+	hello := "hello"
+	num42 := 42
+
+	tests := []struct {
+		name     string
+		input    any
+		expected string
+	}{
+		{
+			name:     "nil pointer",
+			input:    (*string)(nil),
+			expected: "",
+		},
+		{
+			name:     "string pointer",
+			input:    &hello,
+			expected: "hello",
+		},
+		{
+			name:     "int pointer",
+			input:    &num42,
+			expected: "42",
+		},
+		{
+			name:     "non-pointer string",
+			input:    "world",
+			expected: "world",
+		},
+		{
+			name:     "nil value",
+			input:    nil,
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := nilToEmptyString(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestPointerDereferencingInTemplates(t *testing.T) {
+	t.Parallel()
+
+	name := "Alice"
+	longName := "This is a very long name that should be truncated"
+
+	tests := []struct {
+		name           string
+		template       string
+		data           map[string]any
+		expected       string
+		shouldNotError bool
+	}{
+		{
+			name:           "toString with pointer",
+			template:       `Name: {{toString .Data.name}}`,
+			data:           map[string]any{"name": &name},
+			expected:       "Name: Alice",
+			shouldNotError: true,
+		},
+		{
+			name:           "truncateString with pointer",
+			template:       `Name: {{truncateString .Data.name 10}}`,
+			data:           map[string]any{"name": &longName},
+			expected:       "Name: This is...",
+			shouldNotError: true,
+		},
+		{
+			name:           "nilToEmptyString with pointer",
+			template:       `Name: [{{nilToEmptyString .Data.name}}]`,
+			data:           map[string]any{"name": (*string)(nil)},
+			expected:       "Name: []",
+			shouldNotError: true,
+		},
+		{
+			name:           "direct pointer output in template",
+			template:       `Name: {{.Data.name}}`,
+			data:           map[string]any{"name": &name},
+			expected:       "Name: Alice",
+			shouldNotError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := Hydrate(tt.template, &tt.data, nil)
+
+			if tt.shouldNotError {
+				require.NoError(t, err, "template should not error")
+				resultStr, ok := result.(string)
+				require.True(t, ok, "result should be a string")
+				assert.Equal(t, tt.expected, resultStr)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}

@@ -64,6 +64,9 @@ func truthy(key string, data map[string]any) bool {
 }
 
 func truthyValue(val any) bool {
+	// Dereference pointers first
+	val = derefValue(val)
+
 	switch v := val.(type) {
 	case bool:
 		return v
@@ -96,7 +99,9 @@ func mergeRaw(array1 []any, array2 []any) []any {
 }
 
 // nilToEmptyString is a template function that converts nil to empty string
+// Also dereferences pointers before converting
 func nilToEmptyString(v any) string {
+	v = derefValue(v)
 	if v == nil {
 		return ""
 	}
@@ -134,6 +139,9 @@ func convertToIntForArithmetic(v any) int {
 }
 
 func _len(a any) int {
+	// Dereference pointers first
+	a = derefValue(a)
+
 	if a == nil {
 		return 0
 	}
@@ -171,6 +179,11 @@ func lt(a, b int) bool {
 }
 
 func toString(value any) string {
+	// Dereference pointers before converting to string
+	value = derefValue(value)
+	if value == nil {
+		return ""
+	}
 	return fmt.Sprintf("%v", value)
 }
 
@@ -191,6 +204,9 @@ func truncateString(value any, n int) string {
 	if n <= 0 {
 		return ""
 	}
+
+	// Dereference pointers first
+	value = derefValue(value)
 
 	// Handle nil values
 	if value == nil {
