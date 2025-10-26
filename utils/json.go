@@ -139,7 +139,7 @@ func structToMapReflect(val reflect.Value) (any, error) {
 		}
 		return result, nil
 
-	case reflect.Slice, reflect.Array:
+	case reflect.Slice:
 		if val.IsNil() {
 			return nil, nil
 		}
@@ -149,6 +149,18 @@ func structToMapReflect(val reflect.Value) (any, error) {
 			convertedValue, err := structToMapReflect(val.Index(i))
 			if err != nil {
 				return nil, fmt.Errorf("converting slice element %d: %w", i, err)
+			}
+			result[i] = convertedValue
+		}
+		return result, nil
+
+	case reflect.Array:
+		// Arrays cannot be nil, so no nil check
+		result := make([]any, val.Len())
+		for i := 0; i < val.Len(); i++ {
+			convertedValue, err := structToMapReflect(val.Index(i))
+			if err != nil {
+				return nil, fmt.Errorf("converting array element %d: %w", i, err)
 			}
 			result[i] = convertedValue
 		}
