@@ -2,7 +2,9 @@ package utils
 
 import (
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -155,6 +157,54 @@ func TestStructToMap(t *testing.T) {
 			},
 		},
 		{
+			name: "struct with uuid.UUID field",
+			input: struct {
+				ID      uuid.UUID `json:"id"`
+				Name    string    `json:"name"`
+				UserID  *uuid.UUID `json:"user_id"`
+			}{
+				ID:     uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+				Name:   "test",
+				UserID: uuidPtr(uuid.MustParse("987e6543-e21b-43d2-b654-321987654321")),
+			},
+			expected: map[string]any{
+				"ID":     "123e4567-e89b-12d3-a456-426614174000",
+				"Name":   "test",
+				"UserID": "987e6543-e21b-43d2-b654-321987654321",
+			},
+		},
+		{
+			name: "struct with time.Time field",
+			input: struct {
+				ID        int        `json:"id"`
+				CreatedAt time.Time  `json:"created_at"`
+				UpdatedAt *time.Time `json:"updated_at"`
+			}{
+				ID:        1,
+				CreatedAt: time.Date(2024, 10, 26, 12, 0, 0, 0, time.UTC),
+				UpdatedAt: timePtr(time.Date(2024, 10, 27, 12, 0, 0, 0, time.UTC)),
+			},
+			expected: map[string]any{
+				"ID":        1,
+				"CreatedAt": "2024-10-26T12:00:00Z",
+				"UpdatedAt": "2024-10-27T12:00:00Z",
+			},
+		},
+		{
+			name: "struct with nil time.Time pointer",
+			input: struct {
+				ID        int        `json:"id"`
+				UpdatedAt *time.Time `json:"updated_at"`
+			}{
+				ID:        1,
+				UpdatedAt: nil,
+			},
+			expected: map[string]any{
+				"ID":        1,
+				"UpdatedAt": nil,
+			},
+		},
+		{
 			name: "complex nested structure",
 			input: struct {
 				ID        int                `json:"id"`
@@ -223,7 +273,15 @@ func TestStructToMap(t *testing.T) {
 	}
 }
 
-// Helper function
+// Helper functions
 func stringPtr(s string) *string {
 	return &s
+}
+
+func uuidPtr(u uuid.UUID) *uuid.UUID {
+	return &u
+}
+
+func timePtr(t time.Time) *time.Time {
+	return &t
 }

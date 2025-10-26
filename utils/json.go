@@ -98,6 +98,39 @@ func StructToMap(v any) (any, error) {
 	return structToMapReflect(reflect.ValueOf(v))
 }
 
+// shouldMarshalAsPrimitive returns true if the type should be JSON-marshaled
+// directly rather than converted to a map. This is true for:
+// - Arrays (e.g., uuid.UUID which is [16]byte)
+// - Structs that have exported fields (assumed to be value types like time.Time)
+func shouldMarshalAsPrimitive(val reflect.Value) bool {
+	kind := val.Kind()
+
+	// Arrays should always be marshaled (e.g., uuid.UUID is [16]byte)
+	if kind == reflect.Array {
+		return true
+	}
+
+	// For structs, check if it has any exported fields
+	// If it has NO exported fields or all fields are unexported, it's likely a value type
+	// that implements json.Marshaler (like time.Time)
+	if kind == reflect.Struct {
+		typ := val.Type()
+		hasExportedField := false
+		for i := 0; i < typ.NumField(); i++ {
+			if typ.Field(i).IsExported() {
+				hasExportedField = true
+				break
+			}
+		}
+		// If no exported fields, it's a value type (like time.Time) - marshal it
+		if !hasExportedField {
+			return true
+		}
+	}
+
+	return false
+}
+
 func structToMapReflect(val reflect.Value) (any, error) {
 	// Handle invalid values
 	if !val.IsValid() {
@@ -110,6 +143,21 @@ func structToMapReflect(val reflect.Value) (any, error) {
 			return nil, nil
 		}
 		val = val.Elem()
+	}
+
+	// Check if this is a type that should be JSON-marshaled as a primitive
+	// (not converted to a map). This includes types like uuid.UUID, time.Time, etc.
+	if val.CanInterface() && shouldMarshalAsPrimitive(val) {
+		data, err := json.Marshal(val.Interface())
+		if err != nil {
+			return nil, fmt.Errorf("marshaling primitive type: %w", err)
+		}
+		// Unmarshal to get the native representation (string, number, etc.)
+		var result any
+		if err := json.Unmarshal(data, &result); err != nil {
+			return nil, fmt.Errorf("unmarshaling primitive type result: %w", err)
+		}
+		return result, nil
 	}
 
 	switch val.Kind() {
