@@ -28,10 +28,11 @@ This is the common library for the Erdo AI system, providing shared types and ut
 **Template Engine (`/template/`)**: Sophisticated template processing system:
 - `hydration.go` (1,751 lines): Core hydration logic that processes templates with parameter substitution
 - Two categories of template functions:
-  - Basic functions: Pure operations (UUID, JSON, string manipulation)
+  - Basic functions: Pure operations (UUID, JSON, string manipulation, comparison)
   - Data functions: Stateful operations requiring access to `.Data` and `.MissingKeys`
 - Error tracking with `InfoNeededError` that preserves path information for missing parameters
 - Supports optional parameters with `?` suffix and nested data access
+- **Pointer-aware comparisons**: `eq` and `ne` functions automatically dereference pointers and treat `nil` pointers as empty strings for convenient template conditionals
 
 ### Key Design Patterns
 
@@ -61,5 +62,30 @@ Tests use the `testify` framework and are comprehensive, especially in `/templat
 
 ## Important Guidelines
 
+### Pointer Fields in Templates
+Templates can directly access pointer fields from Go structs without dereferencing. The template system handles this automatically:
+
+**Pointer Comparisons**: The `eq` and `ne` functions automatically dereference pointers:
+```go
+// Go struct
+type Dataset struct {
+    Name        *string  `json:"name"`
+    Description *string  `json:"description"`
+}
+
+// Template usage - works directly with pointers
+{{if ne .Data.dataset.Description ""}}
+  Description: {{.Data.dataset.Description}}
+{{end}}
+```
+
+**Key behaviors**:
+- Pointers are automatically dereferenced for comparison
+- `nil` pointers are treated as equivalent to empty strings (`""`)
+- This allows natural template conditionals: `{{if ne $r.Dataset.Name ""}}` works whether `Name` is `nil` or points to an empty string
+
 ### JSON Struct Tags
-**NEVER add `omitempty` to JSON struct tags in shared types** that may be used in templates. The `omitempty` tag breaks template accessors because it causes fields to be excluded from JSON marshaling when they have zero values, making them inaccessible in templates even when explicitly referenced.
+**NEVER add `omitempty` to JSON struct tags in shared types** - pointer fields should use `*type` instead of `omitempty` for optional values. The template system works directly with Go struct fields (not JSON serialization), so:
+- ✅ Use pointer types for optional fields: `Name *string`
+- ❌ Don't use `omitempty` tags to make fields optional
+- Templates access struct fields directly and handle pointers automatically
