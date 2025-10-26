@@ -629,10 +629,43 @@ func get(key string, data any, missingKeys *[]string) any {
 				return nil
 			}
 			current = m[index]
+		case []map[string]any:
+			index, err := strconv.Atoi(part)
+			if err != nil || index < 0 || index >= len(m) {
+				log.Printf("get: invalid array index %q at path %q", part, lookupKey)
+				handleMissingKey(lookupKey, isOptional, missingKeys)
+				return nil
+			}
+			current = m[index]
 		default:
-			log.Printf("get: cannot access %q in type %T at path %q", part, current, lookupKey)
-			handleMissingKey(lookupKey, isOptional, missingKeys)
-			return nil
+			// Use reflection to handle other slice/map types
+			reflectVal := reflect.ValueOf(current)
+			kind := reflectVal.Kind()
+			if kind == reflect.Map {
+				// Try to access as a map
+				key := reflect.ValueOf(part)
+				val := reflectVal.MapIndex(key)
+				if val.IsValid() {
+					current = val.Interface()
+				} else {
+					log.Printf("get: key %q not found in map at path %q", part, lookupKey)
+					handleMissingKey(lookupKey, isOptional, missingKeys)
+					return nil
+				}
+			} else if kind == reflect.Slice || kind == reflect.Array {
+				// Try to access as an array
+				index, err := strconv.Atoi(part)
+				if err != nil || index < 0 || index >= reflectVal.Len() {
+					log.Printf("get: invalid array index %q at path %q", part, lookupKey)
+					handleMissingKey(lookupKey, isOptional, missingKeys)
+					return nil
+				}
+				current = reflectVal.Index(index).Interface()
+			} else {
+				log.Printf("get: cannot access %q in type %T at path %q", part, current, lookupKey)
+				handleMissingKey(lookupKey, isOptional, missingKeys)
+				return nil
+			}
 		}
 	}
 

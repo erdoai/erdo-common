@@ -69,9 +69,19 @@ func truthyValue(val any) bool {
 		return v != ""
 	case []any:
 		return len(v) > 0
+	case []map[string]any:
+		return len(v) > 0
+	case map[string]any:
+		return len(v) > 0
 	case nil:
 		return false
 	default:
+		// Use reflection to handle any other slice, array, or map type
+		reflectVal := reflect.ValueOf(val)
+		kind := reflectVal.Kind()
+		if kind == reflect.Slice || kind == reflect.Array || kind == reflect.Map {
+			return reflectVal.Len() > 0
+		}
 		return true
 	}
 }
@@ -129,10 +139,20 @@ func _len(a any) int {
 	switch v := a.(type) {
 	case []any:
 		return len(v)
+	case []map[string]any:
+		return len(v)
 	case string:
 		return len(v)
 	case map[string]any:
 		return len(v)
+	default:
+		// Use reflection to handle any other slice, array, or map type
+		// This handles other slice/map types that may not match the specific types above
+		val := reflect.ValueOf(a)
+		kind := val.Kind()
+		if kind == reflect.Slice || kind == reflect.Array || kind == reflect.Map {
+			return val.Len()
+		}
 	}
 
 	log.Printf("unsupported type for len: %T %v", a, a)
