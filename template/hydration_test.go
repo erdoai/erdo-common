@@ -681,11 +681,11 @@ func TestMapToDict(t *testing.T) {
 			name:     "List with mixed types",
 			template: "{{mapToDict \"mixedList\" \"key\"}}",
 			stateParams: map[string]any{
-				"mixedList": []any{"string", 123, true, nil},
+				"mixedList": []any{"string", float64(123), true, nil},
 			},
 			expected: []map[string]any{
 				{"key": "string"},
-				{"key": 123}, // No longer converts to float64 since we removed JSON round-trip
+				{"key": float64(123)}, // Using float64 since JSON unmarshalling converts numbers to float64
 				{"key": true},
 				{"key": nil},
 			},
@@ -1915,13 +1915,13 @@ func TestTemplateWithAddkeytoallFunction(t *testing.T) {
 				"mixed_list": []any{
 					map[string]any{"ID": "1", "content": "memory 1"},
 					"not a dict",
-					123,
+					float64(123),
 				},
 			},
 			expected: []any{
 				map[string]any{"ID": "1", "content": "memory 1", "resource_id": "resource-123"},
 				"not a dict",
-				123, // No longer converts to float64
+				float64(123), // Use float64 since JSON unmarshaling converts numbers to float64
 			},
 		},
 	}

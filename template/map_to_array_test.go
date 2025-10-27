@@ -49,14 +49,14 @@ func TestMapToArray(t *testing.T) {
 			stateParams: map[string]any{
 				"mixedMap": map[string]any{
 					"string_key": "string_value",
-					"int_key":    123,
+					"int_key":    float64(123),
 					"bool_key":   true,
 					"nil_key":    nil,
 				},
 			},
 			expected: []map[string]any{
 				{"key": "bool_key", "value": true},
-				{"key": "int_key", "value": 123},
+				{"key": "int_key", "value": float64(123)},
 				{"key": "nil_key", "value": nil},
 				{"key": "string_key", "value": "string_value"},
 			},

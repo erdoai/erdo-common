@@ -98,10 +98,10 @@ func getData(stateParameters *map[string]any) (*map[string]any, error) {
 		return nil, nil
 	}
 
-	// OPTIMIZATION: Don't clone the data - just return it as-is
+	// OPTIMIZATION: Don't clone or normalize the data - just return it as-is
 	// The hydration functions don't mutate the input data, so cloning is unnecessary
-	// This was previously doing JSON marshal/unmarshal which is extremely expensive
-	// for large state dicts (234KB = 180ms overhead)
+	// The caller MUST pass in JSON-normalized data (map[string]any with lowercase keys)
+	// This avoids the expensive JSON marshal/unmarshal that was taking ~180ms for large state
 	return stateParameters, nil
 }
 

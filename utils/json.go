@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 )
 
 func JSONToDict(j json.RawMessage) (map[string]any, error) {
@@ -78,265 +77,6 @@ func SafeJSON(v any) json.RawMessage {
 	return *raw
 }
 
-// StructToMap converts a Go struct to map[string]any using struct field names (not JSON tags).
-// This is useful when you want the map keys to match what Go templates see via reflection.
-//
-// Key differences from JSON marshaling:
-// - Uses struct field names (e.g., "Dataset") not JSON tags (e.g., "dataset")
-// - Recursively processes nested structs, slices, and maps
-// - Automatically dereferences pointers
-// - Preserves nil pointers as nil (not omitted)
-//
-// Example:
-//
-//	type Resource struct {
-//	    ID      int      `json:"id"`
-//	    Dataset *Dataset `json:"dataset"`
-//	}
-//	// StructToMap returns: {"ID": 1, "Dataset": {...}}
-//	// json.Marshal returns: {"id": 1, "dataset": {...}}
-func StructToMap(v any) (any, error) {
-	return structToMapReflect(reflect.ValueOf(v))
-}
-
-// shouldMarshalAsPrimitive returns true if the type should be JSON-marshaled
-// directly rather than converted to a map. This is true for:
-// - Arrays (e.g., uuid.UUID which is [16]byte)
-// - Structs that have exported fields (assumed to be value types like time.Time)
-func shouldMarshalAsPrimitive(val reflect.Value) bool {
-	kind := val.Kind()
-
-	// Arrays should always be marshaled (e.g., uuid.UUID is [16]byte)
-	if kind == reflect.Array {
-		return true
-	}
-
-	// For structs, check if it has any exported fields
-	// If it has NO exported fields or all fields are unexported, it's likely a value type
-	// that implements json.Marshaler (like time.Time)
-	if kind == reflect.Struct {
-		typ := val.Type()
-		hasExportedField := false
-		for i := 0; i < typ.NumField(); i++ {
-			if typ.Field(i).IsExported() {
-				hasExportedField = true
-				break
-			}
-		}
-		// If no exported fields, it's a value type (like time.Time) - marshal it
-		if !hasExportedField {
-			return true
-		}
-	}
-
-	return false
-}
-
-func structToMapReflect(val reflect.Value) (any, error) {
-	// Handle invalid values
-	if !val.IsValid() {
-		return nil, nil
-	}
-
-	// Dereference pointers
-	for val.Kind() == reflect.Ptr {
-		if val.IsNil() {
-			return nil, nil
-		}
-		val = val.Elem()
-	}
-
-	// Check if this is a type that should be JSON-marshaled as a primitive
-	// (not converted to a map). This includes types like uuid.UUID, time.Time, etc.
-	if val.CanInterface() && shouldMarshalAsPrimitive(val) {
-		data, err := json.Marshal(val.Interface())
-		if err != nil {
-			return nil, fmt.Errorf("marshaling primitive type: %w", err)
-		}
-		// Unmarshal to get the native representation (string, number, etc.)
-		var result any
-		if err := json.Unmarshal(data, &result); err != nil {
-			return nil, fmt.Errorf("unmarshaling primitive type result: %w", err)
-		}
-		return result, nil
-	}
-
-	switch val.Kind() {
-	case reflect.Struct:
-		result := make(map[string]any)
-		typ := val.Type()
-
-		for i := 0; i < val.NumField(); i++ {
-			field := typ.Field(i)
-			fieldValue := val.Field(i)
-
-			// Skip unexported fields
-			if !field.IsExported() {
-				continue
-			}
-
-			// Use the struct field name (not JSON tag)
-			fieldName := field.Name
-
-			// Recursively convert the field value
-			convertedValue, err := structToMapReflect(fieldValue)
-			if err != nil {
-				return nil, fmt.Errorf("converting field %s: %w", fieldName, err)
-			}
-
-			result[fieldName] = convertedValue
-		}
-		return result, nil
-
-	case reflect.Slice:
-		if val.IsNil() {
-			return nil, nil
-		}
-
-		result := make([]any, val.Len())
-		for i := 0; i < val.Len(); i++ {
-			convertedValue, err := structToMapReflect(val.Index(i))
-			if err != nil {
-				return nil, fmt.Errorf("converting slice element %d: %w", i, err)
-			}
-			result[i] = convertedValue
-		}
-		return result, nil
-
-	case reflect.Array:
-		// Arrays cannot be nil, so no nil check
-		result := make([]any, val.Len())
-		for i := 0; i < val.Len(); i++ {
-			convertedValue, err := structToMapReflect(val.Index(i))
-			if err != nil {
-				return nil, fmt.Errorf("converting array element %d: %w", i, err)
-			}
-			result[i] = convertedValue
-		}
-		return result, nil
-
-	case reflect.Map:
-		if val.IsNil() {
-			return nil, nil
-		}
-
-		result := make(map[string]any)
-		iter := val.MapRange()
-		for iter.Next() {
-			key := iter.Key()
-			value := iter.Value()
-
-			// Convert key to string
-			keyStr := fmt.Sprintf("%v", key.Interface())
-
-			// Recursively convert the value
-			convertedValue, err := structToMapReflect(value)
-			if err != nil {
-				return nil, fmt.Errorf("converting map value for key %s: %w", keyStr, err)
-			}
-
-			result[keyStr] = convertedValue
-		}
-		return result, nil
-
-	case reflect.Interface:
-		if val.IsNil() {
-			return nil, nil
-		}
-		// Recurse on the concrete value
-		return structToMapReflect(val.Elem())
-
-	default:
-		// For primitive types, just return the value as-is
-		return val.Interface(), nil
-	}
-}
-
-// GetFieldValue gets a field value from any type (struct or map) by field name.
-// Handles both lowercase (JSON tag) and PascalCase (struct field name) lookups.
-// Returns nil if field not found.
-func GetFieldValue(obj any, fieldName string) any {
-	if obj == nil {
-		return nil
-	}
-
-	// Try map access first (fast path)
-	if m, ok := obj.(map[string]any); ok {
-		// Try exact match first
-		if val, exists := m[fieldName]; exists {
-			return val
-		}
-		// Try PascalCase version (for lowercase input)
-		if len(fieldName) > 0 {
-			pascalCase := strings.ToUpper(fieldName[:1]) + fieldName[1:]
-			if val, exists := m[pascalCase]; exists {
-				return val
-			}
-		}
-		// Try lowercase version (for PascalCase input)
-		if len(fieldName) > 0 && fieldName[0] >= 'A' && fieldName[0] <= 'Z' {
-			lowerCase := strings.ToLower(fieldName[:1]) + fieldName[1:]
-			if val, exists := m[lowerCase]; exists {
-				return val
-			}
-		}
-		return nil
-	}
-
-	// Use reflection for structs
-	val := reflect.ValueOf(obj)
-
-	// Dereference pointers
-	for val.Kind() == reflect.Ptr {
-		if val.IsNil() {
-			return nil
-		}
-		val = val.Elem()
-	}
-
-	if val.Kind() != reflect.Struct {
-		return nil
-	}
-
-	typ := val.Type()
-
-	// Try exact field name match first (PascalCase)
-	if len(fieldName) > 0 {
-		pascalCase := strings.ToUpper(fieldName[:1]) + fieldName[1:]
-		if field, ok := typ.FieldByName(pascalCase); ok {
-			fieldVal := val.FieldByIndex(field.Index)
-			if !fieldVal.IsValid() || !fieldVal.CanInterface() {
-				return nil
-			}
-			// Dereference pointer fields
-			if fieldVal.Kind() == reflect.Ptr {
-				if fieldVal.IsNil() {
-					return nil
-				}
-				fieldVal = fieldVal.Elem()
-			}
-			return fieldVal.Interface()
-		}
-	}
-
-	// Try lowercase field name
-	if field, ok := typ.FieldByName(fieldName); ok {
-		fieldVal := val.FieldByIndex(field.Index)
-		if !fieldVal.IsValid() || !fieldVal.CanInterface() {
-			return nil
-		}
-		// Dereference pointer fields
-		if fieldVal.Kind() == reflect.Ptr {
-			if fieldVal.IsNil() {
-				return nil
-			}
-			fieldVal = fieldVal.Elem()
-		}
-		return fieldVal.Interface()
-	}
-
-	return nil
-}
 
 // ToAnySlice converts any slice type to []any.
 // Handles []any, []SomeStruct, []interface{}, etc.
@@ -367,4 +107,20 @@ func ToAnySlice(v any) []any {
 		result[i] = elem.Interface()
 	}
 	return result
+}
+
+// GetFieldValue gets a field value from any type (struct or map) by field name.
+// After JSON normalization, everything is a map, so this is a simple map lookup.
+// Returns nil if field not found.
+func GetFieldValue(obj any, fieldName string) any {
+	if obj == nil {
+		return nil
+	}
+
+	// After JSON round-trip, everything is a map
+	if m, ok := obj.(map[string]any); ok {
+		return m[fieldName]
+	}
+
+	return nil
 }

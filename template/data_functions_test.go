@@ -428,13 +428,14 @@ func TestStructTypeHandling(t *testing.T) {
 		ID      string
 	}
 
-	t.Run("sliceEndKeepFirstUserMessage with []Message structs", func(t *testing.T) {
+	t.Run("sliceEndKeepFirstUserMessage with JSON-normalized data", func(t *testing.T) {
+		// Pass JSON-normalized data (lowercase keys)
 		data := map[string]any{
-			"messages": []Message{
-				{Role: "user", Content: "first user message", ID: "1"},
-				{Role: "assistant", Content: "first assistant response", ID: "2"},
-				{Role: "assistant", Content: "second assistant response", ID: "3"},
-				{Role: "user", Content: "second user message", ID: "4"},
+			"messages": []any{
+				map[string]any{"role": "user", "content": "first user message", "id": "1"},
+				map[string]any{"role": "assistant", "content": "first assistant response", "id": "2"},
+				map[string]any{"role": "assistant", "content": "second assistant response", "id": "3"},
+				map[string]any{"role": "user", "content": "second user message", "id": "4"},
 			},
 		}
 
@@ -445,53 +446,44 @@ func TestStructTypeHandling(t *testing.T) {
 		require.Len(t, result, 3, "Should return last 2 messages plus first user message")
 
 		// Verify first element is the first user message
-		firstMsg := result[0].(Message)
-		assert.Equal(t, "user", firstMsg.Role)
-		assert.Equal(t, "first user message", firstMsg.Content)
+		firstMsg := result[0].(map[string]any)
+		assert.Equal(t, "user", firstMsg["role"])
+		assert.Equal(t, "first user message", firstMsg["content"])
 	})
 
-	t.Run("filter with struct array", func(t *testing.T) {
-		type Item struct {
-			Name   string
-			Status string
-			Count  int
-		}
-
+	t.Run("filter with JSON-normalized data", func(t *testing.T) {
+		// Pass JSON-normalized data (lowercase keys)
 		data := map[string]any{
-			"items": []Item{
-				{Name: "item1", Status: "active", Count: 5},
-				{Name: "item2", Status: "inactive", Count: 3},
-				{Name: "item3", Status: "active", Count: 7},
+			"items": []any{
+				map[string]any{"name": "item1", "status": "active", "count": float64(5)},
+				map[string]any{"name": "item2", "status": "inactive", "count": float64(3)},
+				map[string]any{"name": "item3", "status": "active", "count": float64(7)},
 			},
 		}
 
 		missingKeys := []string{}
-		result := filter("items", "Status", "eq", "active", data, &missingKeys)
+		result := filter("items", "status", "eq", "active", data, &missingKeys)
 
 		require.Empty(t, missingKeys)
 		require.Len(t, result, 2, "Should filter to 2 active items")
 
 		// Verify filtered results
-		item1 := result[0].(Item)
-		assert.Equal(t, "active", item1.Status)
+		item1 := result[0].(map[string]any)
+		assert.Equal(t, "active", item1["status"])
 	})
 
-	t.Run("concat with struct array", func(t *testing.T) {
-		type User struct {
-			Name  string
-			Email string
-		}
-
+	t.Run("concat with JSON-normalized data", func(t *testing.T) {
+		// Pass JSON-normalized data (lowercase keys)
 		data := map[string]any{
-			"users": []User{
-				{Name: "Alice", Email: "alice@example.com"},
-				{Name: "Bob", Email: "bob@example.com"},
-				{Name: "Charlie", Email: "charlie@example.com"},
+			"users": []any{
+				map[string]any{"name": "Alice", "email": "alice@example.com"},
+				map[string]any{"name": "Bob", "email": "bob@example.com"},
+				map[string]any{"name": "Charlie", "email": "charlie@example.com"},
 			},
 		}
 
 		missingKeys := []string{}
-		result := concat(", ", "users", "Name", data, &missingKeys)
+		result := concat(", ", "users", "name", data, &missingKeys)
 
 		assert.Equal(t, "Alice, Bob, Charlie", result)
 		require.Empty(t, missingKeys)
@@ -563,72 +555,32 @@ func TestStructTypeHandling(t *testing.T) {
 			Value string
 		}
 
-		type TestStruct struct {
-			Name   string
-			Count  int
-			Active *bool
-			Nested Nested
-		}
-
-		active := true
-		testStruct := TestStruct{
-			Name:   "test",
-			Count:  42,
-			Active: &active,
-			Nested: Nested{Value: "nested value"},
-		}
-
-		// Test struct field access
-		assert.Equal(t, "test", GetFieldValue(testStruct, "name"))
-		assert.Equal(t, "test", GetFieldValue(testStruct, "Name"))
-		assert.Equal(t, 42, GetFieldValue(testStruct, "count"))
-		assert.Equal(t, 42, GetFieldValue(testStruct, "Count"))
-		assert.Equal(t, true, GetFieldValue(testStruct, "active"))
-
-		// Test map field access
+		// Test map field access (after JSON normalization, everything is a map)
 		testMap := map[string]any{
 			"name":   "test",
-			"count":  42,
+			"count":  float64(42), // JSON numbers are float64
 			"active": true,
 		}
 
 		assert.Equal(t, "test", GetFieldValue(testMap, "name"))
-		assert.Equal(t, "test", GetFieldValue(testMap, "Name")) // Should try PascalCase
-		assert.Equal(t, 42, GetFieldValue(testMap, "count"))
-
-		// Test with PascalCase map keys
-		pascalMap := map[string]any{
-			"Name":   "test",
-			"Count":  42,
-			"Active": true,
-		}
-
-		assert.Equal(t, "test", GetFieldValue(pascalMap, "name")) // Should find Name
-		assert.Equal(t, 42, GetFieldValue(pascalMap, "count"))    // Should find Count
+		assert.Equal(t, float64(42), GetFieldValue(testMap, "count"))
+		assert.Equal(t, true, GetFieldValue(testMap, "active"))
 
 		// Test nil/missing
-		assert.Nil(t, GetFieldValue(testStruct, "nonexistent"))
-		assert.Nil(t, GetFieldValue(testMap, "nonexistent"))
 		assert.Nil(t, GetFieldValue(nil, "name"))
 	})
 
-	t.Run("isUserMessage with struct vs map", func(t *testing.T) {
-		// Test with struct
-		structMsg := Message{Role: "user", Content: "test"}
-		assert.True(t, isUserMessage(structMsg))
+		assert.Nil(t, GetFieldValue(nil, "name"))
 
-		structAssistant := Message{Role: "assistant", Content: "test"}
-		assert.False(t, isUserMessage(structAssistant))
-
-		// Test with map
+	t.Run("isUserMessage with JSON-normalized map", func(t *testing.T) {
+		// After JSON normalization, everything is a map
 		mapMsg := map[string]any{"role": "user", "content": "test"}
 		assert.True(t, isUserMessage(mapMsg))
 
 		mapAssistant := map[string]any{"role": "assistant", "content": "test"}
 		assert.False(t, isUserMessage(mapAssistant))
 
-		// Test with PascalCase map
-		pascalMsg := map[string]any{"Role": "user", "Content": "test"}
-		assert.True(t, isUserMessage(pascalMsg))
+		mapEmpty := map[string]any{"content": "test"} // no role field
+		assert.False(t, isUserMessage(mapEmpty))
 	})
 }
