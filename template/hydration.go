@@ -1506,10 +1506,9 @@ func hydrateDict(dict any, stateParameters *map[string]any, parameterHydrationBe
 		if err != nil {
 			var infoNeededErr *InfoNeededError
 			if errors.As(err, &infoNeededErr) {
-				// Add path to the error
-				addPathToError(err, key)
+				// Don't prepend paths - templates reference absolute paths via .Data
+				// so prepending parent paths would corrupt the correct paths from the template system
 				missingKeys = append(missingKeys, infoNeededErr.MissingKeys...)
-				// Collect the paths with updated path info
 				missingKeyPaths = append(missingKeyPaths, infoNeededErr.MissingKeyPaths...)
 				continue
 			}
@@ -1591,10 +1590,9 @@ func hydrateSlice(slice []any, stateParameters *map[string]any, parameterHydrati
 		if err != nil {
 			var infoNeededErr *InfoNeededError
 			if errors.As(err, &infoNeededErr) {
-				// Add path to the error with array index
-				addPathToError(err, fmt.Sprintf("[%d]", i))
+				// Don't prepend paths - templates reference absolute paths via .Data
+				// so prepending array indices would corrupt the correct paths from the template system
 				missingKeys = append(missingKeys, infoNeededErr.MissingKeys...)
-				// Collect the paths with updated path info
 				missingKeyPaths = append(missingKeyPaths, infoNeededErr.MissingKeyPaths...)
 			} else {
 				return nil, fmt.Errorf("error hydrating slice index %d: %w", i, err)

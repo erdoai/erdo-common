@@ -35,6 +35,8 @@ var basicFuncMap = template.FuncMap{
 	"generateUUID":     genUUID,
 	"list":             list,
 	"now":              now,
+	"endsWith":         endsWith,
+	"startsWith":       startsWith,
 }
 
 func genUUID() string {
@@ -349,4 +351,34 @@ func eq(args ...any) bool {
 // Usage: {{if ne $r.Dataset.Description ""}}...{{end}}
 func ne(args ...any) bool {
 	return !eq(args...)
+}
+
+// endsWith checks if a string ends with a given suffix
+// Automatically handles pointer dereferencing and nil values
+// Usage: {{endsWith .Data.filename ".csv"}}
+func endsWith(str any, suffix string) bool {
+	// Dereference pointer if needed
+	str = derefValue(str)
+
+	if str == nil {
+		return false
+	}
+
+	s := toString(str)
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+// startsWith checks if a string starts with a given prefix
+// Automatically handles pointer dereferencing and nil values
+// Usage: {{startsWith .Data.filename "prefix_"}}
+func startsWith(str any, prefix string) bool {
+	// Dereference pointer if needed
+	str = derefValue(str)
+
+	if str == nil {
+		return false
+	}
+
+	s := toString(str)
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

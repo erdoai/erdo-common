@@ -236,3 +236,232 @@ func TestLenAndTruthyInTemplates(t *testing.T) {
 		})
 	}
 }
+
+func TestEndsWith(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    any
+		suffix   string
+		expected bool
+	}{
+		{
+			name:     "ends with .csv",
+			input:    "data.csv",
+			suffix:   ".csv",
+			expected: true,
+		},
+		{
+			name:     "does not end with .csv",
+			input:    "data.xlsx",
+			suffix:   ".csv",
+			expected: false,
+		},
+		{
+			name:     "ends with .xlsx",
+			input:    "report.xlsx",
+			suffix:   ".xlsx",
+			expected: true,
+		},
+		{
+			name:     "ends with .xls",
+			input:    "report.xls",
+			suffix:   ".xls",
+			expected: true,
+		},
+		{
+			name:     "empty string does not end with suffix",
+			input:    "",
+			suffix:   ".csv",
+			expected: false,
+		},
+		{
+			name:     "nil input returns false",
+			input:    nil,
+			suffix:   ".csv",
+			expected: false,
+		},
+		{
+			name:     "pointer to string",
+			input:    stringPtr("file.csv"),
+			suffix:   ".csv",
+			expected: true,
+		},
+		{
+			name:     "nil pointer returns false",
+			input:    (*string)(nil),
+			suffix:   ".csv",
+			expected: false,
+		},
+		{
+			name:     "suffix longer than string",
+			input:    "a",
+			suffix:   ".csv",
+			expected: false,
+		},
+		{
+			name:     "exact match",
+			input:    ".csv",
+			suffix:   ".csv",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := endsWith(tt.input, tt.suffix)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestStartsWith(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    any
+		prefix   string
+		expected bool
+	}{
+		{
+			name:     "starts with prefix_",
+			input:    "prefix_file.txt",
+			prefix:   "prefix_",
+			expected: true,
+		},
+		{
+			name:     "does not start with prefix_",
+			input:    "file.txt",
+			prefix:   "prefix_",
+			expected: false,
+		},
+		{
+			name:     "starts with http://",
+			input:    "http://example.com",
+			prefix:   "http://",
+			expected: true,
+		},
+		{
+			name:     "starts with https://",
+			input:    "https://example.com",
+			prefix:   "https://",
+			expected: true,
+		},
+		{
+			name:     "empty string does not start with prefix",
+			input:    "",
+			prefix:   "prefix",
+			expected: false,
+		},
+		{
+			name:     "nil input returns false",
+			input:    nil,
+			prefix:   "prefix",
+			expected: false,
+		},
+		{
+			name:     "pointer to string",
+			input:    stringPtr("prefix_data"),
+			prefix:   "prefix_",
+			expected: true,
+		},
+		{
+			name:     "nil pointer returns false",
+			input:    (*string)(nil),
+			prefix:   "prefix",
+			expected: false,
+		},
+		{
+			name:     "prefix longer than string",
+			input:    "a",
+			prefix:   "prefix",
+			expected: false,
+		},
+		{
+			name:     "exact match",
+			input:    "prefix",
+			prefix:   "prefix",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := startsWith(tt.input, tt.prefix)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestEndsWithInTemplates(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		template    string
+		stateParams map[string]any
+		expected    any
+	}{
+		{
+			name:     "endsWith .csv",
+			template: "{{endsWith $.Data.filename \".csv\"}}",
+			stateParams: map[string]any{
+				"filename": "data.csv",
+			},
+			expected: true,
+		},
+		{
+			name:     "endsWith .xlsx or .xls (xlsx)",
+			template: "{{or (endsWith $.Data.filename \".xlsx\") (endsWith $.Data.filename \".xls\")}}",
+			stateParams: map[string]any{
+				"filename": "report.xlsx",
+			},
+			expected: "true", // Templates return boolean as string
+		},
+		{
+			name:     "endsWith .xlsx or .xls (xls)",
+			template: "{{or (endsWith $.Data.filename \".xlsx\") (endsWith $.Data.filename \".xls\")}}",
+			stateParams: map[string]any{
+				"filename": "report.xls",
+			},
+			expected: "true", // Templates return boolean as string
+		},
+		{
+			name:     "does not end with .csv",
+			template: "{{endsWith $.Data.filename \".csv\"}}",
+			stateParams: map[string]any{
+				"filename": "data.txt",
+			},
+			expected: false,
+		},
+		{
+			name:     "conditional based on endsWith",
+			template: "{{if endsWith $.Data.filename \".csv\"}}CSV file{{else}}Not CSV{{end}}",
+			stateParams: map[string]any{
+				"filename": "data.csv",
+			},
+			expected: "CSV file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := Hydrate(tt.template, &tt.stateParams, nil)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// Helper function to create pointer to string
+func stringPtr(s string) *string {
+	return &s
+}
