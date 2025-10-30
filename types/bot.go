@@ -42,14 +42,14 @@ type Step struct {
 	ExecutionMode               ExecutionMode               `json:"execution_mode"`
 	OutputBehaviour             OutputBehavior              `json:"output_behaviour"`
 	OutputChannels              []string                    `json:"output_channels"` // Array of channel names
-	RunningMessage              *string                     `json:"running_message,omitempty"`
-	FinishedMessage             *string                     `json:"finished_message,omitempty"`
-	HistoryContentType          *string                     `json:"history_content_type,omitempty"`
-	UiContentType               *string                     `json:"ui_content_type,omitempty"`
-	ParameterHydrationBehaviour ParameterHydrationBehaviour `json:"parameter_hydration_behaviour"`
-	ResultHandlerID             *string                     `json:"result_handler_id,omitempty"`
-	CreatedAt                   *time.Time                  `json:"created_at,omitempty"`
-	UpdatedAt                   *time.Time                  `json:"updated_at,omitempty"`
+	RunningMessage              *string                      `json:"running_message,omitempty"`
+	FinishedMessage             *string                      `json:"finished_message,omitempty"`
+	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
+	UiContentType               *string                      `json:"ui_content_type,omitempty"`
+	ParameterHydrationBehaviour *ParameterHydrationBehaviour `json:"parameter_hydration_behaviour,omitempty"`
+	ResultHandlerID             *string                      `json:"result_handler_id,omitempty"`
+	CreatedAt                   *time.Time                   `json:"created_at,omitempty"`
+	UpdatedAt                   *time.Time                   `json:"updated_at,omitempty"`
 }
 
 // Parameter Types
@@ -695,15 +695,15 @@ type APIStep struct {
 	BotOutputVisibility         string                      `json:"bot_output_visibility"`
 	ExecutionMode               APIExecutionMode            `json:"execution_mode"`
 	OutputBehaviour             OutputBehavior              `json:"output_behaviour"`
-	OutputChannels              []string                    `json:"output_channels"`
-	RunningMessage              *string                     `json:"running_message,omitempty"`
-	FinishedMessage             *string                     `json:"finished_message,omitempty"`
-	HistoryContentType          *string                     `json:"history_content_type,omitempty"`
-	UiContentType               *string                     `json:"ui_content_type,omitempty"`
-	ParameterHydrationBehaviour ParameterHydrationBehaviour `json:"parameter_hydration_behaviour"`
-	ResultHandlerID             *string                     `json:"result_handler_id,omitempty"`
-	CreatedAt                   *time.Time                  `json:"created_at,omitempty"`
-	UpdatedAt                   *time.Time                  `json:"updated_at,omitempty"`
+	OutputChannels              []string                     `json:"output_channels"`
+	RunningMessage              *string                      `json:"running_message,omitempty"`
+	FinishedMessage             *string                      `json:"finished_message,omitempty"`
+	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
+	UiContentType               *string                      `json:"ui_content_type,omitempty"`
+	ParameterHydrationBehaviour *ParameterHydrationBehaviour `json:"parameter_hydration_behaviour,omitempty"`
+	ResultHandlerID             *string                      `json:"result_handler_id,omitempty"`
+	CreatedAt                   *time.Time                   `json:"created_at,omitempty"`
+	UpdatedAt                   *time.Time                   `json:"updated_at,omitempty"`
 }
 
 // APIParameterValueSource is an Encore-API-compatible version of ParameterValueSource
