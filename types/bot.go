@@ -388,7 +388,7 @@ type CodegenDetails struct {
 	Code    string   `json:"code"`
 	Imports []string `json:"imports"`
 	Hint    string   `json:"hint,omitempty"`
-	EDPHint string   `json:"edp_hint,omitempty`
+	EDPHint string   `json:"edp_hint,omitempty"`
 }
 
 // AnalysisDetails represents analysis details for integrations
