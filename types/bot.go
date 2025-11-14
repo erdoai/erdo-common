@@ -29,19 +29,19 @@ type Bot struct {
 
 // Step represents a bot step for export/import across CLI and backend
 type Step struct {
-	ID                          string                      `json:"id"`
-	BotID                       string                      `json:"bot_id"`
-	ActionType                  string                      `json:"action_type"`
-	Parameters                  map[string]any              `json:"parameters"`
-	DependsOn                   *[]string                   `json:"depends_on,omitempty"` // Able to be nil (so dependencies can be automatically resolved by the API), or empty (so that the deps are explicitly empty)
-	Key                         *string                     `json:"key,omitempty"`
-	StepOrder                   int32                       `json:"step_order"`
-	OutputContentType           string                      `json:"output_content_type"`
-	UserOutputVisibility        string                      `json:"user_output_visibility"`
-	BotOutputVisibility         string                      `json:"bot_output_visibility"`
-	ExecutionMode               ExecutionMode               `json:"execution_mode"`
-	OutputBehaviour             OutputBehavior              `json:"output_behaviour"`
-	OutputChannels              []string                    `json:"output_channels"` // Array of channel names
+	ID                          string                       `json:"id"`
+	BotID                       string                       `json:"bot_id"`
+	ActionType                  string                       `json:"action_type"`
+	Parameters                  map[string]any               `json:"parameters"`
+	DependsOn                   *[]string                    `json:"depends_on,omitempty"` // Able to be nil (so dependencies can be automatically resolved by the API), or empty (so that the deps are explicitly empty)
+	Key                         *string                      `json:"key,omitempty"`
+	StepOrder                   int32                        `json:"step_order"`
+	OutputContentType           string                       `json:"output_content_type"`
+	UserOutputVisibility        string                       `json:"user_output_visibility"`
+	BotOutputVisibility         string                       `json:"bot_output_visibility"`
+	ExecutionMode               ExecutionMode                `json:"execution_mode"`
+	OutputBehaviour             OutputBehavior               `json:"output_behaviour"`
+	OutputChannels              []string                     `json:"output_channels"` // Array of channel names
 	RunningMessage              *string                      `json:"running_message,omitempty"`
 	FinishedMessage             *string                      `json:"finished_message,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
@@ -151,7 +151,7 @@ const (
 	// Anthropic models
 	ModelClaude4Sonnet     Model = "claude-sonnet-4"
 	ModelClaude4Dot5Sonnet Model = "claude-sonnet-4-5"
-	ModelClaudeHaiku4Dot5  Model = "claude-haiku-4-5"
+	ModelClaude4Dot5Haiku  Model = "claude-haiku-4-5"
 
 	// OpenAI models - GPT-4o family (no reasoning support)
 	ModelGPT4o     Model = "gpt-4o"
@@ -388,6 +388,7 @@ type CodegenDetails struct {
 	Code    string   `json:"code"`
 	Imports []string `json:"imports"`
 	Hint    string   `json:"hint,omitempty"`
+	EDPHint string   `json:"edp_hint,omitempty`
 }
 
 // AnalysisDetails represents analysis details for integrations
@@ -683,18 +684,18 @@ type Result struct {
 
 // APIStep is an Encore-API-compatible version of Step
 type APIStep struct {
-	ID                          string                      `json:"id"`
-	BotID                       string                      `json:"bot_id"`
-	ActionType                  string                      `json:"action_type"`
-	Parameters                  json.RawMessage             `json:"parameters"`
-	DependsOn                   *[]string                   `json:"depends_on,omitempty"`
-	Key                         *string                     `json:"key,omitempty"`
-	StepOrder                   int32                       `json:"step_order"`
-	OutputContentType           string                      `json:"output_content_type"`
-	UserOutputVisibility        string                      `json:"user_output_visibility"`
-	BotOutputVisibility         string                      `json:"bot_output_visibility"`
-	ExecutionMode               APIExecutionMode            `json:"execution_mode"`
-	OutputBehaviour             OutputBehavior              `json:"output_behaviour"`
+	ID                          string                       `json:"id"`
+	BotID                       string                       `json:"bot_id"`
+	ActionType                  string                       `json:"action_type"`
+	Parameters                  json.RawMessage              `json:"parameters"`
+	DependsOn                   *[]string                    `json:"depends_on,omitempty"`
+	Key                         *string                      `json:"key,omitempty"`
+	StepOrder                   int32                        `json:"step_order"`
+	OutputContentType           string                       `json:"output_content_type"`
+	UserOutputVisibility        string                       `json:"user_output_visibility"`
+	BotOutputVisibility         string                       `json:"bot_output_visibility"`
+	ExecutionMode               APIExecutionMode             `json:"execution_mode"`
+	OutputBehaviour             OutputBehavior               `json:"output_behaviour"`
 	OutputChannels              []string                     `json:"output_channels"`
 	RunningMessage              *string                      `json:"running_message,omitempty"`
 	FinishedMessage             *string                      `json:"finished_message,omitempty"`
