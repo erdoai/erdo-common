@@ -135,7 +135,7 @@ func TestMissingKeysDeduplication(t *testing.T) {
 
 			// Verify we have the expected keys
 			if len(missingKeys) != len(tt.expectedMissing) {
-				t.Errorf("Expected %d missing keys, got %d. Expected: %v, Got: %v", 
+				t.Errorf("Expected %d missing keys, got %d. Expected: %v, Got: %v",
 					len(tt.expectedMissing), len(missingKeys), tt.expectedMissing, missingKeys)
 			}
 		})
@@ -570,7 +570,7 @@ func TestStructTypeHandling(t *testing.T) {
 		assert.Nil(t, GetFieldValue(nil, "name"))
 	})
 
-		assert.Nil(t, GetFieldValue(nil, "name"))
+	assert.Nil(t, GetFieldValue(nil, "name"))
 
 	t.Run("isUserMessage with JSON-normalized map", func(t *testing.T) {
 		// After JSON normalization, everything is a map

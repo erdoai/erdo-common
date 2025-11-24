@@ -66,8 +66,12 @@ func truthy(key string, data map[string]any) bool {
 }
 
 func truthyValue(val any) bool {
-	// Dereference pointers first
-	val = derefValue(val)
+	// Unwrap null types and dereference pointers first
+	unwrapped, valid := unwrapNullValue(val)
+	if !valid {
+		return false
+	}
+	val = unwrapped
 
 	switch v := val.(type) {
 	case bool:
@@ -101,13 +105,13 @@ func mergeRaw(array1 []any, array2 []any) []any {
 }
 
 // nilToEmptyString is a template function that converts nil to empty string
-// Also dereferences pointers before converting
+// Also dereferences pointers and unwraps SQL null types before converting
 func nilToEmptyString(v any) string {
-	v = derefValue(v)
-	if v == nil {
+	unwrapped, valid := unwrapNullValue(v)
+	if !valid || unwrapped == nil {
 		return ""
 	}
-	return fmt.Sprintf("%v", v)
+	return fmt.Sprintf("%v", unwrapped)
 }
 
 func add(a, b int) int {
@@ -141,12 +145,12 @@ func convertToIntForArithmetic(v any) int {
 }
 
 func _len(a any) int {
-	// Dereference pointers first
-	a = derefValue(a)
-
-	if a == nil {
+	// Unwrap null types and dereference pointers first
+	unwrapped, valid := unwrapNullValue(a)
+	if !valid || unwrapped == nil {
 		return 0
 	}
+	a = unwrapped
 
 	switch v := a.(type) {
 	case []any:
@@ -181,12 +185,12 @@ func lt(a, b int) bool {
 }
 
 func toString(value any) string {
-	// Dereference pointers before converting to string
-	value = derefValue(value)
-	if value == nil {
+	// Dereference pointers and unwrap SQL null types before converting to string
+	unwrapped, valid := unwrapNullValue(value)
+	if !valid || unwrapped == nil {
 		return ""
 	}
-	return fmt.Sprintf("%v", value)
+	return fmt.Sprintf("%v", unwrapped)
 }
 
 // regexReplace performs regex replacement on a string
@@ -202,44 +206,13 @@ func regexReplace(pattern, replacement string, value any) string {
 
 // truncateString returns the first n characters of a string, adding "..." if truncated
 // It can handle various input types by converting them to strings first
+// Automatically unwraps SQL null types and dereferences pointers
 func truncateString(value any, n int) string {
 	if n <= 0 {
 		return ""
 	}
 
-	// Dereference pointers first
-	value = derefValue(value)
-
-	// Handle nil values
-	if value == nil {
-		return ""
-	}
-
-	// Handle sql.NullString types specifically
-	if reflect.TypeOf(value).String() == "sql.NullString" {
-		v := reflect.ValueOf(value)
-		valid := v.FieldByName("Valid").Bool()
-		if !valid {
-			return ""
-		}
-		str := v.FieldByName("String").String()
-
-		// Convert to runes to handle Unicode characters properly
-		runes := []rune(str)
-		if n >= len(runes) {
-			return str
-		}
-
-		// If we need to truncate and there's room for "...", use n-3 characters + "..."
-		if n > 3 {
-			return string(runes[:n-3]) + "..."
-		}
-
-		// If n <= 3, just return the first n characters without "..."
-		return string(runes[:n])
-	}
-
-	// Convert the value to a string using the existing toString function
+	// Convert the value to a string using toString (which handles null types and pointers)
 	str := toString(value)
 
 	// Convert to runes to handle Unicode characters properly
@@ -286,9 +259,100 @@ func derefValue(v any) any {
 	return v
 }
 
+// unwrapNullValue unwraps SQL null types (like sql.NullString, sql.NullInt64, etc.)
+// and their JSON-serialized map representations.
+// Returns the unwrapped value and whether it was valid (non-null).
+// If the value is not a null type, returns the original value and true.
+func unwrapNullValue(v any) (any, bool) {
+	if v == nil {
+		return nil, false
+	}
+
+	// First dereference any pointer
+	v = derefValue(v)
+	if v == nil {
+		return nil, false
+	}
+
+	// Check for map representation (from JSON serialization)
+	// e.g., map[string]any{"String": "value", "Valid": true}
+	if m, ok := v.(map[string]any); ok {
+		return unwrapNullMap(m)
+	}
+
+	// Check for struct types with Valid field (sql.NullString, sql.NullInt64, etc.)
+	val := reflect.ValueOf(v)
+	if val.Kind() == reflect.Struct {
+		return unwrapNullStruct(val)
+	}
+
+	// Not a null type, return as-is
+	return v, true
+}
+
+// unwrapNullMap handles map representations of SQL null types from JSON serialization
+// e.g., map[string]any{"String": "value", "Valid": true}
+func unwrapNullMap(m map[string]any) (any, bool) {
+	// Check if this looks like a serialized null type
+	validVal, hasValid := m["Valid"]
+	if !hasValid {
+		// Not a null type map
+		return m, true
+	}
+
+	// Check if Valid is false
+	valid, ok := validVal.(bool)
+	if !ok {
+		// Valid field is not a bool, not a null type
+		return m, true
+	}
+
+	if !valid {
+		return nil, false
+	}
+
+	// Try common null type value field names
+	// sql.NullString has "String", sql.NullInt64 has "Int64", etc.
+	valueFieldNames := []string{"String", "Int64", "Int32", "Int16", "Float64", "Bool", "Time", "Byte"}
+	for _, fieldName := range valueFieldNames {
+		if val, hasField := m[fieldName]; hasField {
+			return val, true
+		}
+	}
+
+	// Has Valid=true but no recognized value field, return as-is
+	return m, true
+}
+
+// unwrapNullStruct handles actual SQL null type structs
+func unwrapNullStruct(val reflect.Value) (any, bool) {
+	validField := val.FieldByName("Valid")
+	if !validField.IsValid() || validField.Kind() != reflect.Bool {
+		// Not a null type struct
+		return val.Interface(), true
+	}
+
+	if !validField.Bool() {
+		return nil, false
+	}
+
+	// Try common value field names
+	valueFieldNames := []string{"String", "Int64", "Int32", "Int16", "Float64", "Bool", "Time", "Byte"}
+	for _, fieldName := range valueFieldNames {
+		valueField := val.FieldByName(fieldName)
+		if valueField.IsValid() {
+			return valueField.Interface(), true
+		}
+	}
+
+	// Has Valid=true but no recognized value field, return original
+	return val.Interface(), true
+}
+
 // eq performs pointer-aware equality comparison, automatically dereferencing pointers
+// and unwrapping SQL null types.
 // Overrides Go template's built-in eq to handle pointer fields in structs
-// Special case: nil pointers are treated as empty strings for comparison purposes
+// Special case: nil pointers and invalid null types are treated as empty strings for comparison purposes
 // Handles type aliases (like DatasetType string) by comparing underlying values
 // Usage: {{if eq $r.Dataset.Name "foo"}}...{{end}}
 func eq(args ...any) bool {
@@ -296,15 +360,21 @@ func eq(args ...any) bool {
 		return false
 	}
 
-	// Dereference first argument
-	first := derefValue(args[0])
+	// Unwrap first argument (handles pointers and SQL null types)
+	first, firstValid := unwrapNullValue(args[0])
+	if !firstValid {
+		first = nil
+	}
 
 	// Compare with all other arguments - all must be equal
 	for i := 1; i < len(args); i++ {
-		other := derefValue(args[i])
+		other, otherValid := unwrapNullValue(args[i])
+		if !otherValid {
+			other = nil
+		}
 
 		// Special handling for nil comparison with empty string
-		// This makes nil pointer equivalent to empty string for template convenience
+		// This makes nil pointer/invalid null equivalent to empty string for template convenience
 		if (first == nil && other == "") || (first == "" && other == nil) {
 			continue
 		}
@@ -354,31 +424,17 @@ func ne(args ...any) bool {
 }
 
 // endsWith checks if a string ends with a given suffix
-// Automatically handles pointer dereferencing and nil values
+// Automatically handles pointer dereferencing, SQL null types, and nil values
 // Usage: {{endsWith .Data.filename ".csv"}}
 func endsWith(str any, suffix string) bool {
-	// Dereference pointer if needed
-	str = derefValue(str)
-
-	if str == nil {
-		return false
-	}
-
-	s := toString(str)
+	s := toString(str) // toString already handles null types, pointers, and nil
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
 }
 
 // startsWith checks if a string starts with a given prefix
-// Automatically handles pointer dereferencing and nil values
+// Automatically handles pointer dereferencing, SQL null types, and nil values
 // Usage: {{startsWith .Data.filename "prefix_"}}
 func startsWith(str any, prefix string) bool {
-	// Dereference pointer if needed
-	str = derefValue(str)
-
-	if str == nil {
-		return false
-	}
-
-	s := toString(str)
+	s := toString(str) // toString already handles null types, pointers, and nil
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

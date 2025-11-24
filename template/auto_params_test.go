@@ -1,8 +1,8 @@
 package template
 
 import (
-	"testing"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestAutomaticDataParamsAddition(t *testing.T) {
@@ -116,7 +116,7 @@ func TestAutomaticDataParamsAddition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := Hydrate(tt.template, &tt.stateParams, nil)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.errContains != "" {

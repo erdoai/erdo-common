@@ -96,7 +96,7 @@ func TestMapToArray(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			result, err := Hydrate(test.template, &test.stateParams, nil)
-			
+
 			if test.expectedError {
 				assert.Error(t, err)
 				if test.expectedErrMsg != "" {
@@ -104,14 +104,14 @@ func TestMapToArray(t *testing.T) {
 				}
 			} else {
 				assert.NoError(t, err)
-				
+
 				// For array results, we need to compare without considering order
 				// since Go map iteration is non-deterministic
 				if expectedArray, ok := test.expected.([]map[string]any); ok {
 					resultArray, ok := result.([]map[string]any)
 					assert.True(t, ok, "Result should be []map[string]any")
 					assert.Equal(t, len(expectedArray), len(resultArray), "Arrays should have same length")
-					
+
 					// For deterministic tests (empty or single element), compare directly
 					if len(expectedArray) <= 1 {
 						assert.Equal(t, test.expected, result)
@@ -120,8 +120,8 @@ func TestMapToArray(t *testing.T) {
 						for _, expectedItem := range expectedArray {
 							found := false
 							for _, resultItem := range resultArray {
-								if expectedItem["key"] == resultItem["key"] && 
-								   assert.ObjectsAreEqual(expectedItem["value"], resultItem["value"]) {
+								if expectedItem["key"] == resultItem["key"] &&
+									assert.ObjectsAreEqual(expectedItem["value"], resultItem["value"]) {
 									found = true
 									break
 								}

@@ -2875,7 +2875,7 @@ func TestBasicFunctionInTemplate(t *testing.T) {
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 			} else {
 				assert.NoError(t, err)
-				
+
 				// Special validation for UUID and time functions
 				switch tt.name {
 				case "genUUID function call", "generateUUID function call (alias)":
