@@ -29,4 +29,5 @@ type Resource struct {
 	Instructions        *string            `json:"instructions"`
 	Analyses            []ResourceAnalysis `json:"analyses"`
 	RelatedResources    []Resource         `json:"related_resources"`
+	Metadata            map[string]any     `json:"metadata"` // Structured metadata (e.g., sheet_name, table_index for Excel/Sheets)
 }
