@@ -18,9 +18,11 @@ type Bot struct {
 	FilePath        string     `json:"file_path"`
 	Key             *string    `json:"key,omitempty"`
 	Persona         *string    `json:"persona"`
-	RunningMessage  *string    `json:"running_message"`
-	FinishedMessage *string    `json:"finished_message"`
-	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	RunningMessage         *string    `json:"running_message"`
+	FinishedMessage        *string    `json:"finished_message"`
+	RunningStatusTemplate  *string    `json:"running_status_template"`
+	FinishedStatusTemplate *string    `json:"finished_status_template"`
+	CreatedAt              *time.Time `json:"created_at,omitempty"`
 	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
 	OrganizationID  string     `json:"organization_id"`
 	Visibility      string     `json:"visibility"`
