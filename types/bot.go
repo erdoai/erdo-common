@@ -46,8 +46,8 @@ type Step struct {
 	ExecutionMode               ExecutionMode                `json:"execution_mode"`
 	OutputBehaviour             OutputBehavior               `json:"output_behaviour"`
 	OutputChannels              []string                     `json:"output_channels"` // Array of channel names
-	RunningMessage              *string                      `json:"running_message,omitempty"`
-	FinishedMessage             *string                      `json:"finished_message,omitempty"`
+	RunningStatus              *string                      `json:"running_status,omitempty"`
+	FinishedStatus             *string                      `json:"finished_status,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
 	UiContentType               *string                      `json:"ui_content_type,omitempty"`
 	ParameterHydrationBehaviour *ParameterHydrationBehaviour `json:"parameter_hydration_behaviour,omitempty"`
@@ -572,8 +572,8 @@ type Tool struct {
 	HistoryContentType  string         `json:"history_content_type,omitempty"`
 	UiContentType       string         `json:"ui_content_type,omitempty"`
 	AsRoot              bool           `json:"as_root,omitempty"`
-	RunningMessage      *string        `json:"running_message,omitempty"`
-	FinishedMessage     *string        `json:"finished_message,omitempty"`
+	RunningStatus      *string        `json:"running_status,omitempty"`
+	FinishedStatus     *string        `json:"finished_status,omitempty"`
 }
 
 // Result Types (for actions and step execution)
@@ -701,8 +701,8 @@ type APIStep struct {
 	ExecutionMode               APIExecutionMode             `json:"execution_mode"`
 	OutputBehaviour             OutputBehavior               `json:"output_behaviour"`
 	OutputChannels              []string                     `json:"output_channels"`
-	RunningMessage              *string                      `json:"running_message,omitempty"`
-	FinishedMessage             *string                      `json:"finished_message,omitempty"`
+	RunningStatus              *string                      `json:"running_status,omitempty"`
+	FinishedStatus             *string                      `json:"finished_status,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
 	UiContentType               *string                      `json:"ui_content_type,omitempty"`
 	ParameterHydrationBehaviour *ParameterHydrationBehaviour `json:"parameter_hydration_behaviour,omitempty"`
@@ -769,8 +769,8 @@ type APITool struct {
 	HistoryContentType  string          `json:"history_content_type,omitempty"`
 	UiContentType       string          `json:"ui_content_type,omitempty"`
 	AsRoot              bool            `json:"as_root,omitempty"`
-	RunningMessage      *string         `json:"running_message,omitempty"`
-	FinishedMessage     *string         `json:"finished_message,omitempty"`
+	RunningStatus      *string         `json:"running_status,omitempty"`
+	FinishedStatus     *string         `json:"finished_status,omitempty"`
 }
 
 // APIResultHandler is an Encore-API-compatible version of ResultHandler
