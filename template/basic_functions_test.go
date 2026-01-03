@@ -224,6 +224,37 @@ func TestLenAndTruthyInTemplates(t *testing.T) {
 			},
 			expected: "first",
 		},
+		{
+			name:     "truthy with loop variable - has key",
+			template: "{{range $i, $item := $.Data.items}}{{if (truthy \"name\" $item)}}{{$item.name}},{{end}}{{end}}",
+			stateParams: map[string]any{
+				"items": []any{
+					map[string]any{"name": "Alice"},
+					map[string]any{"id": "123"}, // no name key
+					map[string]any{"name": "Bob"},
+				},
+			},
+			expected: "Alice,Bob,",
+		},
+		{
+			name:     "truthy with loop variable - empty array",
+			template: "{{range $i, $item := $.Data.items}}{{if (truthy \"name\" $item)}}{{$item.name}},{{end}}{{end}}",
+			stateParams: map[string]any{
+				"items": []any{},
+			},
+			expected: "",
+		},
+		{
+			name:     "truthy with loop variable - all missing key",
+			template: "{{range $i, $item := $.Data.items}}{{if (truthy \"name\" $item)}}{{$item.name}},{{else}}no-name,{{end}}{{end}}",
+			stateParams: map[string]any{
+				"items": []any{
+					map[string]any{"id": "1"},
+					map[string]any{"id": "2"},
+				},
+			},
+			expected: "no-name,no-name,",
+		},
 	}
 
 	for _, tt := range tests {

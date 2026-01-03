@@ -55,7 +55,7 @@ func toJSON(v any) string {
 	return string(b)
 }
 
-func truthy(key string, data map[string]any) bool {
+func truthy(key string, data any) bool {
 	// pass empty list for missing keys as we only want to check if the key exists & is truthy
 	val := get(key, data, &[]string{})
 	if val == nil {
