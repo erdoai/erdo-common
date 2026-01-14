@@ -1269,8 +1269,39 @@ func executeFunctionCall(funcName string, processedArgs []any, data map[string]a
 
 // prepareBasicFunctionArgs prepares arguments for basic functions (no data/missingKeys needed)
 func prepareBasicFunctionArgs(funcName string, processedArgs []any, fnType reflect.Type) ([]reflect.Value, error) {
-	expectedArgCount := len(processedArgs)
-	if fnType.NumIn() != expectedArgCount {
+	// Handle variadic functions (e.g., func _or(args ...any) any)
+	if fnType.IsVariadic() {
+		numFixed := fnType.NumIn() - 1 // Number of fixed parameters before the variadic
+		if len(processedArgs) < numFixed {
+			return nil, fmt.Errorf("incorrect number of arguments for variadic function %s: expected at least %d, got %d", funcName, numFixed, len(processedArgs))
+		}
+
+		callArgs := make([]reflect.Value, len(processedArgs))
+
+		// Process fixed parameters
+		for i := 0; i < numFixed; i++ {
+			arg, err := convertArgument(processedArgs[i], fnType.In(i), i)
+			if err != nil {
+				return nil, err
+			}
+			callArgs[i] = arg
+		}
+
+		// Process variadic parameters - get the element type of the variadic slice
+		variadicElemType := fnType.In(fnType.NumIn() - 1).Elem()
+		for i := numFixed; i < len(processedArgs); i++ {
+			arg, err := convertArgument(processedArgs[i], variadicElemType, i)
+			if err != nil {
+				return nil, err
+			}
+			callArgs[i] = arg
+		}
+
+		return callArgs, nil
+	}
+
+	// Non-variadic function - exact argument count required
+	if fnType.NumIn() != len(processedArgs) {
 		return nil, fmt.Errorf("incorrect number of arguments for function %s: expected %d, got %d", funcName, fnType.NumIn(), len(processedArgs))
 	}
 

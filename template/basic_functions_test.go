@@ -453,7 +453,7 @@ func TestEndsWithInTemplates(t *testing.T) {
 			stateParams: map[string]any{
 				"filename": "report.xlsx",
 			},
-			expected: "true", // Templates return boolean as string
+			expected: true, // Custom or function returns bool (not string) for proper type preservation
 		},
 		{
 			name:     "endsWith .xlsx or .xls (xls)",
@@ -461,7 +461,7 @@ func TestEndsWithInTemplates(t *testing.T) {
 			stateParams: map[string]any{
 				"filename": "report.xls",
 			},
-			expected: "true", // Templates return boolean as string
+			expected: true, // Custom or function returns bool (not string) for proper type preservation
 		},
 		{
 			name:     "does not end with .csv",

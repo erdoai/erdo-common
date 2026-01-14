@@ -24,6 +24,9 @@ var basicFuncMap = template.FuncMap{
 	"lt":               lt,
 	"eq":               eq, // Override built-in eq to handle pointers
 	"ne":               ne, // Override built-in ne to handle pointers
+	"or":               _or,
+	"and":              _and,
+	"not":              _not,
 	"mergeRaw":         mergeRaw,
 	"nilToEmptyString": nilToEmptyString,
 	"truthyValue":      truthyValue,
@@ -421,6 +424,39 @@ func eq(args ...any) bool {
 // Usage: {{if ne $r.Dataset.Description ""}}...{{end}}
 func ne(args ...any) bool {
 	return !eq(args...)
+}
+
+// _or returns the first truthy argument, or the last argument if none are truthy.
+// This matches Go template's built-in "or" behavior but allows proper type preservation
+// when processed by our custom function executor instead of falling back to string output.
+// Usage: {{or (endsWith .filename ".xlsx") (endsWith .filename ".xls")}}
+func _or(args ...any) any {
+	for i, arg := range args {
+		if truthyValue(arg) || i == len(args)-1 {
+			return arg
+		}
+	}
+	return nil
+}
+
+// _and returns the first falsy argument, or the last argument if all are truthy.
+// This matches Go template's built-in "and" behavior but allows proper type preservation
+// when processed by our custom function executor instead of falling back to string output.
+// Usage: {{and (gt .count 0) (lt .count 100)}}
+func _and(args ...any) any {
+	for i, arg := range args {
+		if !truthyValue(arg) || i == len(args)-1 {
+			return arg
+		}
+	}
+	return nil
+}
+
+// _not returns the boolean negation of its argument.
+// This matches Go template's built-in "not" behavior but allows proper type preservation.
+// Usage: {{not (endsWith .filename ".tmp")}}
+func _not(arg any) bool {
+	return !truthyValue(arg)
 }
 
 // endsWith checks if a string ends with a given suffix
