@@ -49,6 +49,7 @@ type Step struct {
 	RunningStatus              *string                      `json:"running_status,omitempty"`
 	FinishedStatus             *string                      `json:"finished_status,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
+	HistoryRole                 *string                      `json:"history_role,omitempty"` // "user" or "assistant" (default: "assistant")
 	UiContentType               *string                      `json:"ui_content_type,omitempty"`
 	ParameterHydrationBehaviour *ParameterHydrationBehaviour `json:"parameter_hydration_behaviour,omitempty"`
 	ResultHandlerID             *string                      `json:"result_handler_id,omitempty"`
@@ -706,6 +707,7 @@ type APIStep struct {
 	RunningStatus              *string                      `json:"running_status,omitempty"`
 	FinishedStatus             *string                      `json:"finished_status,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
+	HistoryRole                 *string                      `json:"history_role,omitempty"` // "user" or "assistant" (default: "assistant")
 	UiContentType               *string                      `json:"ui_content_type,omitempty"`
 	ParameterHydrationBehaviour *ParameterHydrationBehaviour `json:"parameter_hydration_behaviour,omitempty"`
 	ResultHandlerID             *string                      `json:"result_handler_id,omitempty"`
