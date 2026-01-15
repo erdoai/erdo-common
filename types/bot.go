@@ -126,9 +126,11 @@ type BotOutputVisibility = OutputVisibility
 type OutputContentType string
 
 const (
-	OutputContentTypeText OutputContentType = "text"
-	OutputContentTypeJSON OutputContentType = "json"
-	OutputContentTypeHTML OutputContentType = "html"
+	OutputContentTypeText           OutputContentType = "text"
+	OutputContentTypeJSON           OutputContentType = "json"
+	OutputContentTypeHTML           OutputContentType = "html"
+	OutputContentTypeToolInvocation OutputContentType = "tool_invocation"
+	OutputContentTypeToolResult     OutputContentType = "tool_result"
 )
 
 // HandlerType represents the type of result handler
