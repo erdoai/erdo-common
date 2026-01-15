@@ -37,6 +37,7 @@ var basicFuncMap = template.FuncMap{
 	"genUUID":          genUUID,
 	"generateUUID":     genUUID,
 	"list":             list,
+	"prepend":          prepend,
 	"now":              now,
 	"endsWith":         endsWith,
 	"startsWith":       startsWith,
@@ -243,6 +244,47 @@ func noop() string {
 // Usage: {{list "item1" "item2" "item3"}} returns []any{"item1", "item2", "item3"}
 func list(args ...any) []any {
 	return args
+}
+
+// prepend adds an element to the beginning of a slice
+// Usage: {{prepend "newItem" existingSlice}} returns []any{"newItem", ...existingSlice}
+func prepend(item any, slice any) []any {
+	if slice == nil {
+		return []any{item}
+	}
+
+	// Handle different slice types
+	switch s := slice.(type) {
+	case []any:
+		return append([]any{item}, s...)
+	case []string:
+		result := make([]any, 0, len(s)+1)
+		result = append(result, item)
+		for _, v := range s {
+			result = append(result, v)
+		}
+		return result
+	case []map[string]any:
+		result := make([]any, 0, len(s)+1)
+		result = append(result, item)
+		for _, v := range s {
+			result = append(result, v)
+		}
+		return result
+	default:
+		// Try reflection for other slice types
+		val := reflect.ValueOf(slice)
+		if val.Kind() == reflect.Slice {
+			result := make([]any, 0, val.Len()+1)
+			result = append(result, item)
+			for i := 0; i < val.Len(); i++ {
+				result = append(result, val.Index(i).Interface())
+			}
+			return result
+		}
+		// Not a slice, return item as single-element slice
+		return []any{item}
+	}
 }
 
 // derefValue dereferences a pointer value if it's a pointer, otherwise returns the value as-is

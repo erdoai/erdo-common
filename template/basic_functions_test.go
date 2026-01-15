@@ -496,3 +496,47 @@ func TestEndsWithInTemplates(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+func TestPrepend(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		item     any
+		slice    any
+		expected []any
+	}{
+		{
+			name:     "prepend to []any",
+			item:     "first",
+			slice:    []any{"second", "third"},
+			expected: []any{"first", "second", "third"},
+		},
+		{
+			name:     "prepend to []string",
+			item:     "first",
+			slice:    []string{"second", "third"},
+			expected: []any{"first", "second", "third"},
+		},
+		{
+			name:     "prepend to nil",
+			item:     "only",
+			slice:    nil,
+			expected: []any{"only"},
+		},
+		{
+			name:     "prepend to empty slice",
+			item:     "first",
+			slice:    []any{},
+			expected: []any{"first"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := prepend(tt.item, tt.slice)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
