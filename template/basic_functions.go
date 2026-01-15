@@ -37,6 +37,7 @@ var basicFuncMap = template.FuncMap{
 	"genUUID":          genUUID,
 	"generateUUID":     genUUID,
 	"list":             list,
+	"prepend":          prepend,
 	"now":              now,
 	"endsWith":         endsWith,
 	"startsWith":       startsWith,
@@ -247,7 +248,7 @@ func list(args ...any) []any {
 }
 
 // prepend adds an element to the beginning of a slice
-// Usage: {{prepend "newItem" existingSlice}} returns []any{"newItem", ...existingSlice}
+// Usage: {{prepend (get "item") (get "existingSlice")}}
 func prepend(item any, slice any) []any {
 	if slice == nil {
 		return []any{item}
