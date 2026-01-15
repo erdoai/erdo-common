@@ -686,6 +686,10 @@ func HydrateString(s string, stateParameters *map[string]any, parameterHydration
 
 	strValue, ok := value.(string)
 	if !ok {
+		// Handle nil values - return empty string instead of "<nil>"
+		if value == nil {
+			return "", nil
+		}
 		// always cast to string
 		return fmt.Sprintf("%v", value), nil
 		// return "", fmt.Errorf("expected string, got %T", value)
@@ -914,6 +918,9 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 	}
 
 	strResult := result.String()
+
+	// Replace Go template's "<no value>" output (printed when nil values are rendered) with empty string
+	strResult = strings.ReplaceAll(strResult, "<no value>", "")
 
 	// Manually handle any remaining optional parameters in the template result
 	// Replace any remaining {{key?}} patterns with empty strings

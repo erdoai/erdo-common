@@ -164,6 +164,22 @@ derived
 			},
 			expected: `{"title": "Test Title","description": "Test Description"}`,
 		},
+		{
+			name:     "Nil value from optional get returns empty string not <nil>",
+			template: `{{get "nonexistent?"}}`,
+			stateParams: map[string]any{
+				"other": "value",
+			},
+			expected: "",
+		},
+		{
+			name:     "Nil value from chained optional lookups returns empty string not <no value>",
+			template: `{{get "nested.field?" (get "missing?")}}`,
+			stateParams: map[string]any{
+				"other": "value",
+			},
+			expected: "",
+		},
 	}
 
 	for _, tt := range tests {
