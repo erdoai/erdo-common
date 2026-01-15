@@ -37,10 +37,10 @@ var basicFuncMap = template.FuncMap{
 	"genUUID":          genUUID,
 	"generateUUID":     genUUID,
 	"list":             list,
-	"prepend":          prepend,
 	"now":              now,
 	"endsWith":         endsWith,
 	"startsWith":       startsWith,
+	"has":              has,
 }
 
 func genUUID() string {
@@ -515,4 +515,35 @@ func endsWith(str any, suffix string) bool {
 func startsWith(str any, prefix string) bool {
 	s := toString(str) // toString already handles null types, pointers, and nil
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
+// has checks if a slice/array contains a specific value
+// Works with []string, []any, and other slice types
+// Usage: {{has "value" $.Data.allowed_types}}
+func has(needle any, haystack any) bool {
+	if haystack == nil {
+		return false
+	}
+
+	// Convert needle to string for comparison
+	needleStr := toString(needle)
+
+	// Use reflection to handle different slice types
+	val := reflect.ValueOf(haystack)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
+		return false
+	}
+
+	for i := 0; i < val.Len(); i++ {
+		item := val.Index(i).Interface()
+		if toString(item) == needleStr {
+			return true
+		}
+	}
+
+	return false
 }
