@@ -37,6 +37,7 @@ var basicFuncMap = template.FuncMap{
 	"genUUID":          genUUID,
 	"generateUUID":     genUUID,
 	"list":             list,
+	"dict":             dict,
 	"prepend":          prepend,
 	"now":              now,
 	"endsWith":         endsWith,
@@ -245,6 +246,19 @@ func noop() string {
 // Usage: {{list "item1" "item2" "item3"}} returns []any{"item1", "item2", "item3"}
 func list(args ...any) []any {
 	return args
+}
+
+// dict creates a map from key-value pairs
+// Usage: {{dict "key1" "value1" "key2" "value2"}} returns map[string]any{"key1": "value1", "key2": "value2"}
+// If an odd number of arguments is provided, the last value is ignored
+// If called with no arguments, returns an empty map
+func dict(args ...any) map[string]any {
+	result := make(map[string]any)
+	for i := 0; i+1 < len(args); i += 2 {
+		key := toString(args[i])
+		result[key] = args[i+1]
+	}
+	return result
 }
 
 // prepend adds an element to the beginning of a slice

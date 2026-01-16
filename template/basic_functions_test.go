@@ -540,3 +540,52 @@ func TestPrepend(t *testing.T) {
 		})
 	}
 }
+
+func TestDict(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		args     []any
+		expected map[string]any
+	}{
+		{
+			name:     "empty dict",
+			args:     []any{},
+			expected: map[string]any{},
+		},
+		{
+			name:     "single key-value pair",
+			args:     []any{"key1", "value1"},
+			expected: map[string]any{"key1": "value1"},
+		},
+		{
+			name:     "multiple key-value pairs",
+			args:     []any{"key1", "value1", "key2", "value2"},
+			expected: map[string]any{"key1": "value1", "key2": "value2"},
+		},
+		{
+			name:     "mixed value types",
+			args:     []any{"str", "hello", "num", 42, "bool", true},
+			expected: map[string]any{"str": "hello", "num": 42, "bool": true},
+		},
+		{
+			name:     "odd number of args ignores last",
+			args:     []any{"key1", "value1", "orphan"},
+			expected: map[string]any{"key1": "value1"},
+		},
+		{
+			name:     "single arg returns empty",
+			args:     []any{"orphan"},
+			expected: map[string]any{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := dict(tt.args...)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
