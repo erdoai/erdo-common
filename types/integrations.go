@@ -95,11 +95,20 @@ type SegmentLevel struct {
 
 	// Name enrichment - for APIs where the initial call only returns IDs and a secondary
 	// call is needed to get display names (e.g., Google Ads listAccessibleCustomers).
-	// When set, the provider will make an enrichment call for each segment to get the name.
-	// The enrichment URL template has access to {{.id}} (the segment ID).
+	// The provider first tries batch enrichment (if configured), then falls back to individual calls.
+	// URL templates have access to {{.id}} (the segment ID).
+	//
+	// Batch enrichment (tried first): Query each segment as a potential "manager" that can return
+	// names for multiple child segments. For Google Ads, manager accounts can query customer_client
+	// to get all linked account names in one call.
+	NameEnrichmentBatchBody     string `json:"name_enrichment_batch_body,omitempty"`      // Batch query body (e.g., customer_client query)
+	NameEnrichmentBatchIDPath   string `json:"name_enrichment_batch_id_path,omitempty"`   // JSONPath to IDs in batch response
+	NameEnrichmentBatchNamePath string `json:"name_enrichment_batch_name_path,omitempty"` // JSONPath to names in batch response
+	//
+	// Individual enrichment (fallback): Called for segments not found in batch responses.
 	NameEnrichmentURLTemplate string `json:"name_enrichment_url_template,omitempty"` // URL to fetch name
 	NameEnrichmentMethod      string `json:"name_enrichment_method,omitempty"`       // HTTP method (GET by default)
-	NameEnrichmentBody        string `json:"name_enrichment_body,omitempty"`         // Request body for enrichment
+	NameEnrichmentBody        string `json:"name_enrichment_body,omitempty"`         // Request body for individual enrichment
 	NameEnrichmentPath        string `json:"name_enrichment_path,omitempty"`         // JSONPath to name in enrichment response
 }
 
