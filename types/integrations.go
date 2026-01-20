@@ -92,6 +92,15 @@ type SegmentLevel struct {
 	NamePath            string   `json:"name_path,omitempty"`            // JSONPath to name in response
 	ParentKey           string   `json:"parent_key,omitempty"`           // How to reference parent in API call
 	RequiredCredentials []string `json:"required_credentials,omitempty"` // Required credentials for this level
+
+	// Name enrichment - for APIs where the initial call only returns IDs and a secondary
+	// call is needed to get display names (e.g., Google Ads listAccessibleCustomers).
+	// When set, the provider will make an enrichment call for each segment to get the name.
+	// The enrichment URL template has access to {{.id}} (the segment ID).
+	NameEnrichmentURLTemplate string `json:"name_enrichment_url_template,omitempty"` // URL to fetch name
+	NameEnrichmentMethod      string `json:"name_enrichment_method,omitempty"`       // HTTP method (GET by default)
+	NameEnrichmentBody        string `json:"name_enrichment_body,omitempty"`         // Request body for enrichment
+	NameEnrichmentPath        string `json:"name_enrichment_path,omitempty"`         // JSONPath to name in enrichment response
 }
 
 // SegmentConfig combines selection rules with API configuration
