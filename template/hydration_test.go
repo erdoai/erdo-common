@@ -2951,6 +2951,30 @@ func TestCoalesceWithLiteralValues(t *testing.T) {
 			expected: "actual_value", // Should return the existing value
 		},
 		{
+			name:     "Coalesce with empty string value should return fallback",
+			template: `{{coalesce "model?" "claude-haiku-4-5"}}`,
+			stateParams: map[string]any{
+				"model": "", // Empty string should be treated as missing
+			},
+			expected: "claude-haiku-4-5", // Should return the fallback value
+		},
+		{
+			name:     "Coalesce with empty string value and numeric fallback",
+			template: `{{coalesce "count?" 0}}`,
+			stateParams: map[string]any{
+				"count": "", // Empty string should be treated as missing
+			},
+			expected: 0, // Should return the fallback value
+		},
+		{
+			name:     "Coalesce with whitespace string value should NOT return fallback",
+			template: `{{coalesce "value?" "default"}}`,
+			stateParams: map[string]any{
+				"value": " ", // Whitespace is not empty
+			},
+			expected: " ", // Should return the whitespace string
+		},
+		{
 			name:        "Coalesce in condition-like scenario",
 			template:    `{{coalesce "code_retry_loops?" 0}}`,
 			stateParams: map[string]any{

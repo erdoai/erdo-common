@@ -776,17 +776,20 @@ func incrementCounterBy(counterName string, increment int, data map[string]any, 
 	return newValue
 }
 
-// coalesce returns the first non-nil value from the arguments
+// coalesce returns the first non-nil, non-empty value from the arguments
 // The first argument (key) is treated as a template variable to look up in data
-// The second argument (fallbackValue) is treated as a literal value to return if the key is missing
-// Example: {{coalesce "optional_key?" 0}} returns the value of optional_key or 0 if nil/missing
-// Example: {{coalesce "optional_key?" "default"}} returns the value of optional_key or "default" if nil/missing
+// The second argument (fallbackValue) is treated as a literal value to return if the key is missing or empty
+// Example: {{coalesce "optional_key?" 0}} returns the value of optional_key or 0 if nil/missing/empty
+// Example: {{coalesce "optional_key?" "default"}} returns the value of optional_key or "default" if nil/missing/empty
 func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]string) any {
 	// Handle the first argument (key) - try to look it up in data if it's a string
 	if strKey, ok := key.(string); ok {
 		dataValue := get(strKey, data, &[]string{}) // Don't add to missingKeys for coalesce
+		// Treat nil and empty strings as "missing" values
 		if dataValue != nil {
-			return dataValue
+			if strValue, ok := dataValue.(string); !ok || strValue != "" {
+				return dataValue
+			}
 		}
 	} else if key != nil {
 		// If the key is not a string but is not nil, return it
