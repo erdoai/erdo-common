@@ -30,6 +30,7 @@ var dataFuncMap = template.FuncMap{
 	"sliceEndKeepFirstUserMessage": sliceEndKeepFirstUserMessage,
 	"slice":                        slice,
 	"extractSlice":                 extractSlice,
+	"flattenField":                 flattenField,
 	"dedupeBy":                     dedupeBy,
 	"find":                         find,
 	"findByValue":                  findByValue,
@@ -201,6 +202,32 @@ func extractSlice(array string, propertyPath string, data map[string]any, missin
 	for _, item := range items {
 		if val := get(propertyPath, item, missingKeys); val != nil {
 			result = append(result, val)
+		}
+	}
+	return result
+}
+
+// flattenField extracts an array field from each item in a list and flattens all arrays into one
+// Example: {{flattenField "resources" "always_attached_resources"}} will extract the always_attached_resources
+// array from each resource and flatten them into a single array
+func flattenField(array string, propertyPath string, data map[string]any, missingKeys *[]string) []any {
+	_items := get(array, data, missingKeys)
+	if _items == nil {
+		return []any{}
+	}
+
+	items := ToAnySlice(_items)
+	if items == nil {
+		return []any{}
+	}
+
+	result := make([]any, 0)
+	for _, item := range items {
+		if val := get(propertyPath, item, missingKeys); val != nil {
+			// The value should be a slice - flatten it into the result
+			if nestedSlice := ToAnySlice(val); nestedSlice != nil {
+				result = append(result, nestedSlice...)
+			}
 		}
 	}
 	return result
@@ -407,10 +434,14 @@ func getAtIndex(array string, index any, data map[string]any, missingKeys *[]str
 func merge(array1 string, array2 string, data map[string]any, missingKeys *[]string) []any {
 	initialMissingCount := len(*missingKeys)
 
+	// Check if keys are optional (have ? suffix)
+	array1Optional := strings.HasSuffix(array1, "?")
+	array2Optional := strings.HasSuffix(array2, "?")
+
 	items1 := get(array1, data, missingKeys)
 	items2 := get(array2, data, missingKeys)
 
-	// Fail fast if either key was missing
+	// Fail fast if a REQUIRED key was missing
 	if len(*missingKeys) > initialMissingCount {
 		log.Printf("merge: key lookup failed for array1=%q or array2=%q", array1, array2)
 		return []any{}
@@ -418,20 +449,28 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 
 	var slice1, slice2 []any
 
-	// Convert first array
-	slice1 = ToAnySlice(items1)
-	if slice1 == nil {
-		log.Printf("merge: array1 key %q is not a slice, got %T", array1, items1)
-		addMissingKey(missingKeys, array1)
-		return []any{}
+	// Convert first array - treat nil as empty for optional keys
+	if items1 == nil && array1Optional {
+		slice1 = []any{}
+	} else {
+		slice1 = ToAnySlice(items1)
+		if slice1 == nil {
+			log.Printf("merge: array1 key %q is not a slice, got %T", array1, items1)
+			addMissingKey(missingKeys, array1)
+			return []any{}
+		}
 	}
 
-	// Convert second array
-	slice2 = ToAnySlice(items2)
-	if slice2 == nil {
-		log.Printf("merge: array2 key %q is not a slice, got %T", array2, items2)
-		addMissingKey(missingKeys, array2)
-		return []any{}
+	// Convert second array - treat nil as empty for optional keys
+	if items2 == nil && array2Optional {
+		slice2 = []any{}
+	} else {
+		slice2 = ToAnySlice(items2)
+		if slice2 == nil {
+			log.Printf("merge: array2 key %q is not a slice, got %T", array2, items2)
+			addMissingKey(missingKeys, array2)
+			return []any{}
+		}
 	}
 
 	// Combine slices

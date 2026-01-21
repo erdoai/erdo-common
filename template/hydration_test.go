@@ -2184,6 +2184,206 @@ func TestTemplateWithExtractSliceFunction(t *testing.T) {
 	}
 }
 
+// TestFlattenField tests the flattenField function which extracts an array field
+// from each item in a list and flattens all arrays into one
+func TestFlattenField(t *testing.T) {
+	tests := []struct {
+		name        string
+		array       string
+		field       string
+		data        map[string]any
+		missingKeys *[]string
+		expected    []any
+	}{
+		{
+			name:  "Flatten nested arrays - resources with always_attached_resources",
+			array: "resources",
+			field: "always_attached_resources",
+			data: map[string]any{
+				"resources": []any{
+					map[string]any{
+						"dataset": map[string]any{"id": "ds1"},
+						"always_attached_resources": []any{
+							map[string]any{"id": "r1", "name": "Resource 1"},
+							map[string]any{"id": "r2", "name": "Resource 2"},
+						},
+					},
+					map[string]any{
+						"dataset": map[string]any{"id": "ds2"},
+						"always_attached_resources": []any{
+							map[string]any{"id": "r3", "name": "Resource 3"},
+						},
+					},
+				},
+			},
+			missingKeys: &[]string{},
+			expected: []any{
+				map[string]any{"id": "r1", "name": "Resource 1"},
+				map[string]any{"id": "r2", "name": "Resource 2"},
+				map[string]any{"id": "r3", "name": "Resource 3"},
+			},
+		},
+		{
+			name:  "Empty parent array",
+			array: "resources",
+			field: "always_attached_resources",
+			data: map[string]any{
+				"resources": []any{},
+			},
+			missingKeys: &[]string{},
+			expected:    []any{},
+		},
+		{
+			name:        "Parent array not found",
+			array:       "nonexistent",
+			field:       "items",
+			data:        map[string]any{},
+			missingKeys: &[]string{},
+			expected:    []any{},
+		},
+		{
+			name:  "Some items missing the nested field",
+			array: "resources",
+			field: "always_attached_resources",
+			data: map[string]any{
+				"resources": []any{
+					map[string]any{
+						"dataset": map[string]any{"id": "ds1"},
+						"always_attached_resources": []any{
+							map[string]any{"id": "r1", "name": "Resource 1"},
+						},
+					},
+					map[string]any{
+						"dataset": map[string]any{"id": "ds2"},
+						// No always_attached_resources field
+					},
+					map[string]any{
+						"dataset": map[string]any{"id": "ds3"},
+						"always_attached_resources": []any{
+							map[string]any{"id": "r2", "name": "Resource 2"},
+						},
+					},
+				},
+			},
+			missingKeys: &[]string{},
+			expected: []any{
+				map[string]any{"id": "r1", "name": "Resource 1"},
+				map[string]any{"id": "r2", "name": "Resource 2"},
+			},
+		},
+		{
+			name:  "Nested field is not an array - should be skipped",
+			array: "resources",
+			field: "always_attached_resources",
+			data: map[string]any{
+				"resources": []any{
+					map[string]any{
+						"always_attached_resources": "not an array",
+					},
+					map[string]any{
+						"always_attached_resources": []any{
+							map[string]any{"id": "r1"},
+						},
+					},
+				},
+			},
+			missingKeys: &[]string{},
+			expected: []any{
+				map[string]any{"id": "r1"},
+			},
+		},
+		{
+			name:  "Empty nested arrays",
+			array: "resources",
+			field: "always_attached_resources",
+			data: map[string]any{
+				"resources": []any{
+					map[string]any{
+						"always_attached_resources": []any{},
+					},
+					map[string]any{
+						"always_attached_resources": []any{},
+					},
+				},
+			},
+			missingKeys: &[]string{},
+			expected:    []any{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := flattenField(tt.array, tt.field, tt.data, tt.missingKeys)
+			assert.Equal(t, tt.expected, result, "Test case: %s", tt.name)
+		})
+	}
+}
+
+// TestTemplateWithFlattenFieldFunction tests the flattenField function in templates
+func TestTemplateWithFlattenFieldFunction(t *testing.T) {
+	tests := []struct {
+		name           string
+		template       string
+		stateParams    map[string]any
+		expected       any
+		expectedError  bool
+		expectedErrMsg string
+	}{
+		{
+			name:     "Flatten always_attached_resources from resources",
+			template: `{{flattenField "resources" "always_attached_resources"}}`,
+			stateParams: map[string]any{
+				"resources": []any{
+					map[string]any{
+						"always_attached_resources": []any{
+							map[string]any{"key": "table1", "name": "Table 1"},
+						},
+					},
+					map[string]any{
+						"always_attached_resources": []any{
+							map[string]any{"key": "table2", "name": "Table 2"},
+							map[string]any{"key": "table3", "name": "Table 3"},
+						},
+					},
+				},
+			},
+			expected: []any{
+				map[string]any{"key": "table1", "name": "Table 1"},
+				map[string]any{"key": "table2", "name": "Table 2"},
+				map[string]any{"key": "table3", "name": "Table 3"},
+			},
+		},
+		{
+			name:     "Empty resources array",
+			template: `{{flattenField "resources" "always_attached_resources"}}`,
+			stateParams: map[string]any{
+				"resources": []any{},
+			},
+			expected: []any{},
+		},
+		{
+			name:        "Resources not found",
+			template:    `{{flattenField "resources" "always_attached_resources"}}`,
+			stateParams: map[string]any{},
+			expected:    []any{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := Hydrate(tt.template, &tt.stateParams, nil)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedErrMsg)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestSliceEndKeepFirstUserMessage(t *testing.T) {
 	tests := []struct {
 		name        string
