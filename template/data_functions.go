@@ -443,7 +443,8 @@ func merge(array1 string, array2 string, data map[string]any, missingKeys *[]str
 
 	// Fail fast if a REQUIRED key was missing
 	if len(*missingKeys) > initialMissingCount {
-		log.Printf("merge: key lookup failed for array1=%q or array2=%q", array1, array2)
+		newMissing := (*missingKeys)[initialMissingCount:]
+		log.Printf("merge: key lookup failed for array1=%q or array2=%q, missing keys: %v", array1, array2, newMissing)
 		return []any{}
 	}
 

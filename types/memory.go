@@ -7,6 +7,7 @@ import (
 // Memory represents a stored memory item in the system
 type Memory struct {
 	ID                  string                 `json:"id"`
+	Title               *string                `json:"title"`
 	Content             string                 `json:"content"`
 	Description         string                 `json:"description"`
 	Tags                []string               `json:"tags"`
