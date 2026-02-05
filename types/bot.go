@@ -11,24 +11,24 @@ import (
 
 // Bot represents a bot for export/import across CLI and backend
 type Bot struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Description     string     `json:"description"`
-	Code            string     `json:"code"`
-	FilePath        string     `json:"file_path"`
-	Key             *string    `json:"key,omitempty"`
-	Persona         *string    `json:"persona"`
-	RunningStatus        *string `json:"running_status"`
-	FinishedStatus       *string `json:"finished_status"`
-	RunningStatusContext *string `json:"running_status_context"`
-	FinishedStatusContext *string `json:"finished_status_context"`
-	RunningStatusPrompt  *string `json:"running_status_prompt"`
-	FinishedStatusPrompt *string `json:"finished_status_prompt"`
-	CreatedAt              *time.Time `json:"created_at,omitempty"`
-	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
-	OrganizationID  string     `json:"organization_id"`
-	Visibility      string     `json:"visibility"`
-	Source          string     `json:"source"`
+	ID                    string     `json:"id"`
+	Name                  string     `json:"name"`
+	Description           string     `json:"description"`
+	Code                  string     `json:"code"`
+	FilePath              string     `json:"file_path"`
+	Key                   *string    `json:"key,omitempty"`
+	Persona               *string    `json:"persona"`
+	RunningStatus         *string    `json:"running_status"`
+	FinishedStatus        *string    `json:"finished_status"`
+	RunningStatusContext  *string    `json:"running_status_context"`
+	FinishedStatusContext *string    `json:"finished_status_context"`
+	RunningStatusPrompt   *string    `json:"running_status_prompt"`
+	FinishedStatusPrompt  *string    `json:"finished_status_prompt"`
+	CreatedAt             *time.Time `json:"created_at,omitempty"`
+	UpdatedAt             *time.Time `json:"updated_at,omitempty"`
+	OrganizationID        string     `json:"organization_id"`
+	Visibility            string     `json:"visibility"`
+	Source                string     `json:"source"`
 }
 
 // Step represents a bot step for export/import across CLI and backend
@@ -46,8 +46,8 @@ type Step struct {
 	ExecutionMode               ExecutionMode                `json:"execution_mode"`
 	OutputBehaviour             OutputBehavior               `json:"output_behaviour"`
 	OutputChannels              []string                     `json:"output_channels"` // Array of channel names
-	RunningStatus              *string                      `json:"running_status,omitempty"`
-	FinishedStatus             *string                      `json:"finished_status,omitempty"`
+	RunningStatus               *string                      `json:"running_status,omitempty"`
+	FinishedStatus              *string                      `json:"finished_status,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
 	HistoryRole                 *string                      `json:"history_role,omitempty"` // "user" or "assistant" (default: "assistant")
 	UiContentType               *string                      `json:"ui_content_type,omitempty"`
@@ -575,8 +575,8 @@ type Tool struct {
 	HistoryContentType  string         `json:"history_content_type,omitempty"`
 	UiContentType       string         `json:"ui_content_type,omitempty"`
 	AsRoot              bool           `json:"as_root,omitempty"`
-	RunningStatus      *string        `json:"running_status,omitempty"`
-	FinishedStatus     *string        `json:"finished_status,omitempty"`
+	RunningStatus       *string        `json:"running_status,omitempty"`
+	FinishedStatus      *string        `json:"finished_status,omitempty"`
 }
 
 // Result Types (for actions and step execution)
@@ -679,11 +679,12 @@ const (
 
 // Result of an action or invocation operation - gathering params, running a handler, a step etc
 type Result struct {
-	Status     Status          `json:"status"`
-	Parameters *map[string]any `json:"parameters"` // input parameters
-	Output     *map[string]any `json:"output"`
-	Message    *string         `json:"message"`
-	Error      *Error          `json:"error"`
+	Status          Status          `json:"status"`
+	Parameters      *map[string]any `json:"parameters"` // input parameters
+	Output          *map[string]any `json:"output"`
+	Message         *string         `json:"message"`
+	Error           *Error          `json:"error"`
+	FormattedResult *string         `json:"formatted_result"` // Markdown formatted for LLM consumption (agent service)
 }
 
 // API Types (Encore-compatible versions without interface{})
@@ -704,8 +705,8 @@ type APIStep struct {
 	ExecutionMode               APIExecutionMode             `json:"execution_mode"`
 	OutputBehaviour             OutputBehavior               `json:"output_behaviour"`
 	OutputChannels              []string                     `json:"output_channels"`
-	RunningStatus              *string                      `json:"running_status,omitempty"`
-	FinishedStatus             *string                      `json:"finished_status,omitempty"`
+	RunningStatus               *string                      `json:"running_status,omitempty"`
+	FinishedStatus              *string                      `json:"finished_status,omitempty"`
 	HistoryContentType          *string                      `json:"history_content_type,omitempty"`
 	HistoryRole                 *string                      `json:"history_role,omitempty"` // "user" or "assistant" (default: "assistant")
 	UiContentType               *string                      `json:"ui_content_type,omitempty"`
@@ -773,8 +774,8 @@ type APITool struct {
 	HistoryContentType  string          `json:"history_content_type,omitempty"`
 	UiContentType       string          `json:"ui_content_type,omitempty"`
 	AsRoot              bool            `json:"as_root,omitempty"`
-	RunningStatus      *string         `json:"running_status,omitempty"`
-	FinishedStatus     *string         `json:"finished_status,omitempty"`
+	RunningStatus       *string         `json:"running_status,omitempty"`
+	FinishedStatus      *string         `json:"finished_status,omitempty"`
 }
 
 // APIResultHandler is an Encore-API-compatible version of ResultHandler
