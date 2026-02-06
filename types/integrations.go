@@ -71,6 +71,7 @@ type UIConfig struct {
 	BrandLogoIcon UIConfigIcon `json:"brand_logo_icon"`
 	BrandColor    string       `json:"brand_color"`
 	ButtonStyle   string       `json:"button_style"`
+	Category      string       `json:"category,omitempty"`
 }
 
 // ErrorHandlingConfig defines how to handle errors in API calls
