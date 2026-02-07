@@ -86,6 +86,7 @@ type SegmentLevel struct {
 	Name                string   `json:"name"`                           // e.g., "account", "property"
 	Type                string   `json:"type"`                           // e.g., "project", "campaign"
 	Selectable          bool     `json:"selectable"`                     // Whether this level can be selected
+	Required            bool     `json:"required"`                       // Must user explicitly select from this level? (false = optional, all by default)
 	URLTemplate         string   `json:"url_template,omitempty"`         // Template for API call
 	Method              string   `json:"method,omitempty"`               // HTTP method (GET by default)
 	Body                string   `json:"body,omitempty"`                 // Request body for POST/PUT requests
