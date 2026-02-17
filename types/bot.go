@@ -158,6 +158,7 @@ const (
 	// Anthropic models
 	ModelClaude4Sonnet     Model = "claude-sonnet-4"
 	ModelClaude4Dot5Sonnet Model = "claude-sonnet-4-5"
+	ModelClaude4Dot6Sonnet Model = "claude-sonnet-4-6"
 	ModelClaude4Dot5Haiku  Model = "claude-haiku-4-5"
 
 	// OpenAI models - GPT-4o family (no reasoning support)
