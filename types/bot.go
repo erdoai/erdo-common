@@ -570,6 +570,7 @@ type Tool struct {
 	Name                string         `json:"name"`
 	Description         string         `json:"description"`
 	InputSchema         JSONSchema     `json:"input_schema"`
+	RawInputSchema      map[string]any `json:"raw_input_schema,omitempty"` // When set, used instead of InputSchema (for complex schemas with $defs, anyOf, etc.)
 	ActionType          string         `json:"action_type"`
 	Parameters          map[string]any `json:"parameters"`
 	BotOutputVisibility string         `json:"bot_output_visibility,omitempty"`
@@ -578,6 +579,7 @@ type Tool struct {
 	AsRoot              bool           `json:"as_root,omitempty"`
 	RunningStatus       *string        `json:"running_status,omitempty"`
 	FinishedStatus      *string        `json:"finished_status,omitempty"`
+	Strict              bool           `json:"strict,omitempty"` // When true, provider uses constrained decoding for this tool's input schema
 }
 
 // Result Types (for actions and step execution)
