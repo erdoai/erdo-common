@@ -11,6 +11,13 @@ type ResourceAnalysis struct {
 	EntityKey    string     `json:"entity_key"`
 }
 
+// ResourceField represents a single field/column in a resource, carrying its type and semantic description.
+type ResourceField struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+}
+
 // Resource represents a resource definition in the system
 type Resource struct {
 	ID                  string             `json:"id"`
@@ -30,4 +37,5 @@ type Resource struct {
 	Analyses            []ResourceAnalysis `json:"analyses"`
 	RelatedResources    []Resource         `json:"related_resources"`
 	Metadata            map[string]any     `json:"metadata"` // Structured metadata (e.g., sheet_name, table_index for Excel/Sheets)
+	Fields              []ResourceField    `json:"fields"`   // Column/field definitions with types and descriptions
 }
