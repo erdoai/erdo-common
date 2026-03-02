@@ -175,10 +175,18 @@ const (
 	ModelGPT5Mini Model = "gpt-5-mini"
 	ModelGPT5Nano Model = "gpt-5-nano"
 
-	// Google Vertex AI models
+	// OpenAI models - GPT-5.2 family (reasoning support, 400k context)
+	ModelGPT5Dot2    Model = "gpt-5.2"
+	ModelGPT5Dot2Pro Model = "gpt-5.2-pro"
+
+	// Google Vertex AI models - Gemini 2.5
 	ModelGemini2Dot5Pro       Model = "gemini-2.5-pro"
 	ModelGemini2Dot5Flash     Model = "gemini-2.5-flash"
 	ModelGemini2Dot5FlashLite Model = "gemini-2.5-flash-lite"
+
+	// Google Vertex AI models - Gemini 3
+	ModelGemini3Dot1Pro Model = "gemini-3.1-pro"
+	ModelGemini3Flash   Model = "gemini-3-flash"
 )
 
 // ParameterDefinition represents a parameter definition (shared across CLI and backend)
