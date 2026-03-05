@@ -587,7 +587,8 @@ type Tool struct {
 	AsRoot              bool           `json:"as_root,omitempty"`
 	RunningStatus       *string        `json:"running_status,omitempty"`
 	FinishedStatus      *string        `json:"finished_status,omitempty"`
-	Strict              bool           `json:"strict,omitempty"` // When true, provider uses constrained decoding for this tool's input schema
+	Strict              bool           `json:"strict,omitempty"`            // When true, provider uses constrained decoding for this tool's input schema
+	ApprovalRequired    bool           `json:"approval_required,omitempty"` // When true, tool execution requires approval check before running
 }
 
 // Result Types (for actions and step execution)
