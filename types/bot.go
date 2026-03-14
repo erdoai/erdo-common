@@ -566,11 +566,13 @@ type JSONSchemaProperty struct {
 }
 
 // JSONSchema represents a JSON schema for tool input validation
+// Do NOT use omitempty — LLM providers (especially OpenAI) require fields
+// to be present even when empty. Omitting them causes schema validation errors.
 type JSONSchema struct {
 	Type       JSONSchemaType                `json:"type"`
-	Properties map[string]JSONSchemaProperty `json:"properties,omitempty"`
-	Required   []string                      `json:"required,omitempty"`
-	Items      *JSONSchemaProperty           `json:"items,omitempty"` // For array types
+	Properties map[string]JSONSchemaProperty `json:"properties"`
+	Required   []string                      `json:"required"`
+	Items      *JSONSchemaProperty           `json:"items"` // For array types
 }
 
 // Tool represents a tool definition for LLM function calling
