@@ -161,10 +161,6 @@ const (
 	ModelClaude4Dot6Sonnet Model = "claude-sonnet-4-6"
 	ModelClaude4Dot5Haiku  Model = "claude-haiku-4-5"
 
-	// OpenAI models - GPT-4o family (no reasoning support)
-	ModelGPT4o     Model = "gpt-4o"
-	ModelGPT4oMini Model = "gpt-4o-mini"
-
 	// OpenAI models - GPT-4.1 family (reasoning support)
 	ModelGPT4Dot1     Model = "gpt-4.1"
 	ModelGPT4Dot1Mini Model = "gpt-4.1-mini"
