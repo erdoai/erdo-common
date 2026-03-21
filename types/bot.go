@@ -572,7 +572,7 @@ type JSONSchema struct {
 	Type       JSONSchemaType                `json:"type"`
 	Properties map[string]JSONSchemaProperty `json:"properties"`
 	Required   []string                      `json:"required"`
-	Items      *JSONSchemaProperty           `json:"items"` // For array types
+	Items      *JSONSchemaProperty           `json:"items,omitempty"` // For array types — omitempty required, null items causes OpenAI schema validation errors
 }
 
 // Tool represents a tool definition for LLM function calling
