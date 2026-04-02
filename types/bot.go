@@ -175,6 +175,11 @@ const (
 	ModelGPT5Dot2    Model = "gpt-5.2"
 	ModelGPT5Dot2Pro Model = "gpt-5.2-pro"
 
+	// OpenAI models - GPT-5.4 family (latest, reasoning support, 1M context)
+	ModelGPT5Dot4     Model = "gpt-5.4"
+	ModelGPT5Dot4Pro  Model = "gpt-5.4-pro"
+	ModelGPT5Dot4Mini Model = "gpt-5.4-mini"
+
 	// Google Vertex AI models - Gemini 2.5
 	ModelGemini2Dot5Pro       Model = "gemini-2.5-pro"
 	ModelGemini2Dot5Flash     Model = "gemini-2.5-flash"
