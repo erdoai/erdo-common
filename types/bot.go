@@ -406,6 +406,7 @@ type CodegenDetails struct {
 	Imports []string `json:"imports"`
 	Hint    string   `json:"hint,omitempty"`
 	EDPHint string   `json:"edp_hint,omitempty"`
+	SQLHint string   `json:"sql_hint,omitempty"`
 }
 
 // AnalysisDetails represents analysis details for integrations
