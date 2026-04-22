@@ -6,26 +6,28 @@ import (
 
 // ResourceAnalysis represents analysis information for a resource
 type ResourceAnalysis struct {
-	Summary      *string    `json:"summary"`
-	LastAnalyzed *time.Time `json:"last_analyzed"`
-	EntityKey    string     `json:"entity_key"`
+	Summary      *string              `json:"summary"`
+	LastAnalyzed *time.Time           `json:"last_analyzed"`
+	EntityKey    string               `json:"entity_key"`
+	ColumnRanges []ColumnDateRange    `json:"column_ranges,omitempty"`
+}
+
+// ColumnDateRange carries the observed min/max for a single date or numeric column,
+// derived from ColumnStats during analysis. Agents render these so the LLM sees the
+// actual extent of each column's data without probing with min/max queries.
+type ColumnDateRange struct {
+	Column  string   `json:"column"`
+	MinDate string   `json:"min_date,omitempty"`
+	MaxDate string   `json:"max_date,omitempty"`
+	Min     *float64 `json:"min,omitempty"`
+	Max     *float64 `json:"max,omitempty"`
 }
 
 // ResourceField represents a single field/column in a resource, carrying its type and semantic description.
-//
-// Min/Max and MinDate/MaxDate are optional range signals derived from ColumnStats on the
-// most recent analysis. For numeric columns, Min/Max are populated. For date/timestamp
-// columns, MinDate/MaxDate are populated as ISO strings. Agents surface these to the LLM
-// so it can see the actual extent of the data (e.g. "max date is 2025-10-15") without
-// having to probe with min/max queries first.
 type ResourceField struct {
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Description string   `json:"description"`
-	Min         *float64 `json:"min,omitempty"`
-	Max         *float64 `json:"max,omitempty"`
-	MinDate     string   `json:"min_date,omitempty"`
-	MaxDate     string   `json:"max_date,omitempty"`
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
 }
 
 // Resource represents a resource definition in the system
