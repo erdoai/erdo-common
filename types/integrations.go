@@ -73,6 +73,11 @@ type UIConfig struct {
 	BrandColorDarkMode string       `json:"brand_color_dark_mode"`
 	ButtonStyle        string       `json:"button_style"`
 	Category           string       `json:"category"`
+	// Precedence orders tiles in the integrations panel. Higher values sort
+	// earlier within the primary grid; negative values demote into the
+	// "Show more" section. Default (0) = primary grid, unordered (falls
+	// back to alphabetical by name).
+	Precedence int `json:"precedence,omitempty"`
 }
 
 // ErrorHandlingConfig defines how to handle errors in API calls
