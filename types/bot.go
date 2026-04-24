@@ -400,13 +400,19 @@ type IntegrationSchema struct {
 	AnalysisDetails  *AnalysisDetails            `json:"analysis_details,omitempty"`
 }
 
-// CodegenDetails represents code generation details for integrations
+// CodegenDetails represents code generation details for integrations.
+// Code/Imports hold the Python client surface (loaded into the codeexec
+// sandbox by analyze_data). CodeJS holds the JavaScript fetch() pattern
+// shown to run_js and the SWE batch-JS path — when empty, the JS render
+// path falls back to generic SECRETS["slug"] / <credential_schema> guidance.
 type CodegenDetails struct {
-	Code    string   `json:"code"`
-	Imports []string `json:"imports"`
-	Hint    string   `json:"hint,omitempty"`
-	EDPHint string   `json:"edp_hint,omitempty"`
-	SQLHint string   `json:"sql_hint,omitempty"`
+	Code      string   `json:"code"`
+	Imports   []string `json:"imports"`
+	CodeJS    string   `json:"code_js,omitempty"`
+	ImportsJS []string `json:"imports_js,omitempty"`
+	Hint      string   `json:"hint,omitempty"`
+	EDPHint   string   `json:"edp_hint,omitempty"`
+	SQLHint   string   `json:"sql_hint,omitempty"`
 }
 
 // AnalysisDetails represents analysis details for integrations
