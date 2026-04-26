@@ -175,7 +175,8 @@ const (
 	ModelGPT5Dot2    Model = "gpt-5.2"
 	ModelGPT5Dot2Pro Model = "gpt-5.2-pro"
 
-	// OpenAI models - GPT-5.4 family (latest, reasoning support, 1M context)
+	// OpenAI models - GPT-5.5 / GPT-5.4 family (reasoning support, 1M context)
+	ModelGPT5Dot5     Model = "gpt-5.5"
 	ModelGPT5Dot4     Model = "gpt-5.4"
 	ModelGPT5Dot4Pro  Model = "gpt-5.4-pro"
 	ModelGPT5Dot4Mini Model = "gpt-5.4-mini"
