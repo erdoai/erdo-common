@@ -96,6 +96,17 @@ type SegmentLevel struct {
 	ParentKey           string   `json:"parent_key,omitempty"`           // How to reference parent in API call
 	RequiredCredentials []string `json:"required_credentials,omitempty"` // Required credentials for this level
 
+	// GroupBy* synthesize a parent level by grouping this level's segments on a
+	// field of each response item (e.g. Meta ad accounts grouped by their owning
+	// business). This avoids a separate parent-level fetch when the parent entity
+	// only appears embedded in the child response — and keeps working when the
+	// token cannot list the parents directly. Items missing the group field stay
+	// ungrouped at this level's position in the tree.
+	GroupByLevelName string `json:"group_by_level_name,omitempty"` // Type/name for synthetic parent segments, e.g. "business"
+	GroupByItemsPath string `json:"group_by_items_path,omitempty"` // JSONPath to the response items array, e.g. "$.data[*]"
+	GroupByIDPath    string `json:"group_by_id_path,omitempty"`    // JSONPath to the group ID relative to an item, e.g. "$.business.id"
+	GroupByNamePath  string `json:"group_by_name_path,omitempty"`  // JSONPath to the group name relative to an item, e.g. "$.business.name"
+
 	// Name enrichment - for APIs where the initial call only returns IDs and a secondary
 	// call is needed to get display names (e.g., Google Ads listAccessibleCustomers).
 	// The provider first tries batch enrichment (if configured), then falls back to individual calls.
