@@ -106,6 +106,11 @@ type SegmentLevel struct {
 	GroupByItemsPath string `json:"group_by_items_path,omitempty"` // JSONPath to the response items array, e.g. "$.data[*]"
 	GroupByIDPath    string `json:"group_by_id_path,omitempty"`    // JSONPath to the group ID relative to an item, e.g. "$.business.id"
 	GroupByNamePath  string `json:"group_by_name_path,omitempty"`  // JSONPath to the group name relative to an item, e.g. "$.business.name"
+	// GroupByUngroupedName, when set, buckets items missing the group field under
+	// a single synthetic parent with this display name (type "group", id
+	// "__ungrouped__") instead of leaving them ungrouped at this level — keeping
+	// the tree a uniform depth for consumers that render strict two-level trees.
+	GroupByUngroupedName string `json:"group_by_ungrouped_name,omitempty"`
 
 	// Name enrichment - for APIs where the initial call only returns IDs and a secondary
 	// call is needed to get display names (e.g., Google Ads listAccessibleCustomers).
