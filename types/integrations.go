@@ -83,10 +83,24 @@ type ErrorHandlingConfig struct {
 
 // SegmentLevel defines how to fetch and parse each level of segments
 type SegmentLevel struct {
-	Name                string   `json:"name"`                           // e.g., "account", "property"
-	Type                string   `json:"type"`                           // e.g., "project", "campaign"
-	Selectable          bool     `json:"selectable"`                     // Whether this level can be selected
-	Required            bool     `json:"required"`                       // Must user explicitly select from this level? (false = optional, all by default)
+	Name       string `json:"name"`       // e.g., "account", "property"
+	Type       string `json:"type"`       // e.g., "project", "campaign"
+	Selectable bool   `json:"selectable"` // Whether this level can be selected
+	Required   bool   `json:"required"`   // Must user explicitly select from this level? (false = optional, all by default)
+
+	// ConnectionScope marks a level as choosing WHICH PROVIDER ACCOUNT the
+	// connection operates, rather than filtering what one dataset reads from
+	// it. An advertising OAuth grant reaches every account the authenticating
+	// login can see, so "which of them is this connection for" is a property of
+	// the connection: it decides the account for every dataset, sync, and agent
+	// action that connection serves. Levels below it (campaigns, lists, flows)
+	// stay per-dataset filters.
+	//
+	// Connection-scope selections are stored on the integration and are asked
+	// for when connecting; the segment picker shown while configuring a dataset
+	// offers only the levels below them.
+	ConnectionScope bool `json:"connection_scope,omitempty"`
+
 	URLTemplate         string   `json:"url_template,omitempty"`         // Template for API call
 	Method              string   `json:"method,omitempty"`               // HTTP method (GET by default)
 	Body                string   `json:"body,omitempty"`                 // Request body for POST/PUT requests
