@@ -150,11 +150,15 @@ type SegmentConfig struct {
 	SelectionType SegmentSelectionType `json:"selection_type"`
 	MinSelections *int                 `json:"min_selections,omitempty"` // Only for MultiSelect
 	MaxSelections *int                 `json:"max_selections,omitempty"` // Only for MultiSelect
-	Description   string               `json:"description"`              // Explains what segments represent
-	Hierarchical  bool                 `json:"hierarchical"`             // Whether segments have parent/child relationships
-	BaseURL       string               `json:"base_url,omitempty"`       // Base URL for API calls
-	Levels        []SegmentLevel       `json:"levels"`                   // Ordered segment hierarchy
-	ErrorHandling *ErrorHandlingConfig `json:"error_handling,omitempty"`
+	Description   string               `json:"description"`              // Explains what the dataset-scoped segments filter
+	// ConnectionScopeDescription labels the account choice made when
+	// connecting, where Description labels the per-dataset filter below it.
+	// Empty when no level is ConnectionScope.
+	ConnectionScopeDescription string               `json:"connection_scope_description,omitempty"`
+	Hierarchical               bool                 `json:"hierarchical"`       // Whether segments have parent/child relationships
+	BaseURL                    string               `json:"base_url,omitempty"` // Base URL for API calls
+	Levels                     []SegmentLevel       `json:"levels"`             // Ordered segment hierarchy
+	ErrorHandling              *ErrorHandlingConfig `json:"error_handling,omitempty"`
 }
 
 // ResourceTypeConfig defines how to fetch a specific type of resource
