@@ -89,3 +89,7 @@ type Dataset struct {
 - ✅ Use pointer types for optional fields: `Name *string`
 - ❌ Don't use `omitempty` tags to make fields optional
 - Templates access struct fields directly and handle pointers automatically
+
+## Opening PRs
+
+- **Open PRs as draft; mark ready only when the work is actually done and validated.** Create WIP PRs with `gh pr create --draft`, flip to ready (`gh pr ready`) only once the change is complete, self-reviewed, and CI-green, and move it back to draft (`gh pr ready --undo`) the moment you start changing it again. A non-draft PR is a promise it is finished — automated review and merge act only on ready PRs, and a human should only ever need to look at ready ones. This prevents a merge landing mid-change: round-one fixes merge, you push round two, and that follow-up commit is stranded on a now-deleted branch — invisible to every GitHub API (`gh pr view --json commits`, `pulls/N/commits`, and the issue timeline all drop it once the branch is gone) and recoverable only from an on-disk worktree.
