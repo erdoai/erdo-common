@@ -62,8 +62,9 @@ func toJSON(v any) string {
 }
 
 func truthy(key string, data any) bool {
-	// pass empty list for missing keys as we only want to check if the key exists & is truthy
-	val := get(key, data, &[]string{})
+	// A presence test asks whether the key is there, so a miss is the answer
+	// rather than a fault: neither recorded nor logged.
+	val := getQuiet(key, data)
 	if val == nil {
 		return false
 	}

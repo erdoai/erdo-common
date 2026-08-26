@@ -834,7 +834,7 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 	for _, key := range allKeys {
 		if key.IsOptional {
 			// Check if the parameter exists in data
-			value := get(key.Key, *data, &[]string{})
+			value := getQuiet(key.Key, *data)
 			if value == nil {
 				// Replace the optional parameter with empty string using string replacement
 				optPattern := fmt.Sprintf("{{%s?}}", key.Key)
@@ -867,7 +867,7 @@ func hydrateString(userTemplate string, data *map[string]any) (any, error) {
 	keyDefinitions := KeyDefinitions{}
 	// Only include non-optional keys or optional keys that exist in data
 	for _, key := range allKeys {
-		if !key.IsOptional || get(key.Key, *data, &[]string{}) != nil {
+		if !key.IsOptional || getQuiet(key.Key, *data) != nil {
 			keyDefinitions[key.Key] = key
 		}
 	}
