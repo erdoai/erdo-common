@@ -610,7 +610,38 @@ func isUserMessage(msg any) bool {
 // - "items.0.name" will navigate to the "name" field in the first element of the "items" slice
 // Returns nil if the key is not found or can't be accessed.
 func get(key string, data any, missingKeys *[]string) any {
+	return getValue(key, data, missingKeys, false)
+}
+
+// getQuiet resolves a key for a caller that is asking WHETHER a value is there
+// rather than expecting one — a presence test, a coalesce fallback, an optional
+// parameter being checked before substitution. For those, a miss is the answer
+// the caller asked for, so it is neither recorded in missingKeys nor logged.
+//
+// Reporting them anyway is not free: presence tests missed ~35,000 times a week
+// in production, and every one wrote a line indistinguishable from a required
+// key going missing — which is a real fault, and was buried under them.
+func getQuiet(key string, data any) any {
+	return getValue(key, data, &[]string{}, true)
+}
+
+// noteMiss records a failed lookup, and logs it only when the miss matters. A
+// miss on an optional key or a presence test is expected — the engine's own
+// contract is that optional parameters are silently substituted — so logging it
+// reports normal control flow as if it were a fault.
+func noteMiss(lookupKey string, isOptional bool, missingKeys *[]string, format string, args ...any) {
+	handleMissingKey(lookupKey, isOptional, missingKeys)
+	if isOptional {
+		return
+	}
+	log.Printf(format, args...)
+}
+
+func getValue(key string, data any, missingKeys *[]string, quiet bool) any {
 	lookupKey, isOptional := cleanKey(key)
+	if quiet {
+		isOptional = true
+	}
 
 	parts := strings.FieldsFunc(lookupKey, func(r rune) bool {
 		return r == '.' || r == '[' || r == ']'
@@ -618,8 +649,7 @@ func get(key string, data any, missingKeys *[]string) any {
 	current := data
 
 	if current == nil {
-		log.Printf("get: data is nil for key %q", lookupKey)
-		handleMissingKey(lookupKey, isOptional, missingKeys)
+		noteMiss(lookupKey, isOptional, missingKeys, "get: data is nil for key %q", lookupKey)
 		return nil
 	}
 
@@ -632,23 +662,20 @@ func get(key string, data any, missingKeys *[]string) any {
 			if val, exists := m[part]; exists {
 				current = val
 			} else {
-				log.Printf("get: key %q not found in dict at path %q", part, lookupKey)
-				handleMissingKey(lookupKey, isOptional, missingKeys)
+				noteMiss(lookupKey, isOptional, missingKeys, "get: key %q not found in dict at path %q", part, lookupKey)
 				return nil
 			}
 		case []any:
 			index, err := strconv.Atoi(part)
 			if err != nil || index < 0 || index >= len(m) {
-				log.Printf("get: invalid array index %q at path %q", part, lookupKey)
-				handleMissingKey(lookupKey, isOptional, missingKeys)
+				noteMiss(lookupKey, isOptional, missingKeys, "get: invalid array index %q at path %q", part, lookupKey)
 				return nil
 			}
 			current = m[index]
 		case []map[string]any:
 			index, err := strconv.Atoi(part)
 			if err != nil || index < 0 || index >= len(m) {
-				log.Printf("get: invalid array index %q at path %q", part, lookupKey)
-				handleMissingKey(lookupKey, isOptional, missingKeys)
+				noteMiss(lookupKey, isOptional, missingKeys, "get: invalid array index %q at path %q", part, lookupKey)
 				return nil
 			}
 			current = m[index]
@@ -663,22 +690,19 @@ func get(key string, data any, missingKeys *[]string) any {
 				if val.IsValid() {
 					current = val.Interface()
 				} else {
-					log.Printf("get: key %q not found in map at path %q", part, lookupKey)
-					handleMissingKey(lookupKey, isOptional, missingKeys)
+					noteMiss(lookupKey, isOptional, missingKeys, "get: key %q not found in map at path %q", part, lookupKey)
 					return nil
 				}
 			} else if kind == reflect.Slice || kind == reflect.Array {
 				// Try to access as an array
 				index, err := strconv.Atoi(part)
 				if err != nil || index < 0 || index >= reflectVal.Len() {
-					log.Printf("get: invalid array index %q at path %q", part, lookupKey)
-					handleMissingKey(lookupKey, isOptional, missingKeys)
+					noteMiss(lookupKey, isOptional, missingKeys, "get: invalid array index %q at path %q", part, lookupKey)
 					return nil
 				}
 				current = reflectVal.Index(index).Interface()
 			} else {
-				log.Printf("get: cannot access %q in type %T at path %q", part, current, lookupKey)
-				handleMissingKey(lookupKey, isOptional, missingKeys)
+				noteMiss(lookupKey, isOptional, missingKeys, "get: cannot access %q in type %T at path %q", part, current, lookupKey)
 				return nil
 			}
 		}
@@ -795,7 +819,7 @@ func incrementCounterBy(counterName string, increment int, data map[string]any, 
 	currentValue := 0
 
 	// Get current value if it exists
-	if existingValue := get(counterName, data, &[]string{}); existingValue != nil {
+	if existingValue := getQuiet(counterName, data); existingValue != nil {
 		switch v := existingValue.(type) {
 		case int:
 			currentValue = v
@@ -824,7 +848,7 @@ func incrementCounterBy(counterName string, increment int, data map[string]any, 
 func coalesce(key any, fallbackValue any, data map[string]any, missingKeys *[]string) any {
 	// Handle the first argument (key) - try to look it up in data if it's a string
 	if strKey, ok := key.(string); ok {
-		dataValue := get(strKey, data, &[]string{}) // Don't add to missingKeys for coalesce
+		dataValue := getQuiet(strKey, data) // a coalesce miss is what the fallback is for
 		// Treat nil and empty strings as "missing" values
 		if dataValue != nil {
 			if strValue, ok := dataValue.(string); !ok || strValue != "" {
