@@ -600,6 +600,11 @@ type Tool struct {
 	FinishedStatus      *string        `json:"finished_status,omitempty"`
 	Strict              bool           `json:"strict,omitempty"`            // When true, provider uses constrained decoding for this tool's input schema
 	ApprovalRequired    bool           `json:"approval_required,omitempty"` // When true, tool execution requires approval check before running
+	// EmitsOwnCard marks a tool whose handler emits its own visible card on
+	// success (a dataset write, a sent email, a native integration write). The
+	// agent loop then hides the successful tool_result row so one act renders
+	// once; a failed call keeps its error row.
+	EmitsOwnCard bool `json:"emits_own_card,omitempty"`
 }
 
 // Result Types (for actions and step execution)
